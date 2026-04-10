@@ -1,50 +1,79 @@
-# TaskFlow UI Shell
+# TaskFlow
 
-TaskFlow is currently a preserved UI shell on top of the SDK `3.8.0` dependency baseline.
+TaskFlow is a Manifesto-powered task workspace demo that runs its domain runtime in the browser and layers a lineage-aware assistant on top of the same local state.
 
-The old `2.0.0`-era Manifesto runtime, MEL domain, agent routes, and intent plumbing have been hard-cut from the app. This repo is now the visual/reference surface for the next clean rebuild, not a partial runtime migration.
+## What It Does
 
-The domain source is now wired back into the real Next.js module graph through a `.mel` import, and webpack codegen emits [`src/domain/taskflow.domain.ts`](./src/domain/taskflow.domain.ts) from [`src/domain/taskflow.mel`](./src/domain/taskflow.mel) during build.
+- Manual task CRUD backed by a client-owned Manifesto runtime
+- Lineage history with visible branch/head context
+- Live multi-step assistant with tool calling
+- Hover-grounded references such as "this", "that", and hovered header actions
+- Lineage search from the assistant
+- Browser-local persistence for lineage state and assistant chat
 
-## Current State
+## Architecture Summary
 
-- Local fixture data only
-- No Manifesto runtime activation in the app path
-- No persistence
-- No networked assistant or `/api/agent` execution path
-- The app imports [`src/domain/taskflow.mel`](./src/domain/taskflow.mel) through [`src/domain/taskflow.schema.ts`](./src/domain/taskflow.schema.ts) so compiler/codegen run on the real Next path
-- `pnpm dev` and `pnpm build` use webpack so the installed Manifesto compiler/codegen integration can process `.mel`
-- `manifesto.config.ts` and the `3.8.0` package baseline stay in place for the future rebuild
+The UI is rendered by Next.js and composed in [`src/components/taskflow/TaskFlowPageClient.tsx`](./src/components/taskflow/TaskFlowPageClient.tsx). Runtime ownership stays on the client through [`src/hooks/useTaskFlow.ts`](./src/hooks/useTaskFlow.ts) and [`src/lib/taskflow-runtime-controller.ts`](./src/lib/taskflow-runtime-controller.ts), which activate the Manifesto + Lineage runtime, persist local state, and expose view actions. The server route at [`src/app/api/assistant/route.ts`](./src/app/api/assistant/route.ts) only orchestrates model streaming and tool schemas. TaskFlow's domain source remains authored in [`src/domain/taskflow.mel`](./src/domain/taskflow.mel), imported through [`src/domain/taskflow.schema.ts`](./src/domain/taskflow.schema.ts), and code-generated into [`src/domain/taskflow.domain.ts`](./src/domain/taskflow.domain.ts) during webpack builds.
 
-## Preserved Interactions
+## Quickstart
 
-- View switching between todo, kanban, table, and trash
-- Task selection and detail panel open/close
-- Kanban status moves
-- Soft delete, restore, permanent delete, and empty trash
-- Date filtering
-- Assistant panel open/close with disabled shell messaging
+1. Install dependencies:
 
-## Shell Boundary
+   ```bash
+   pnpm install
+   ```
 
-The active controller surface is local-only:
+2. Configure the assistant:
 
+   ```bash
+   cp .env.local.example .env.local
+   ```
+
+   Required environment variables:
+
+   - `OPENAI_API_KEY`
+   - `OPENAI_MODEL`
+
+3. Start the app:
+
+   ```bash
+   pnpm dev
+   ```
+
+4. Validation commands:
+
+   ```bash
+   pnpm lint
+   pnpm typecheck
+   pnpm test
+   pnpm build
+   ```
+
+## Local Persistence
+
+- TaskFlow stores lineage runtime state in `localStorage`.
+- Assistant chat history is also stored in `localStorage`.
+- If the MEL/schema hash changes, persisted lineage state is discarded and the app reseeds from fixtures.
+- The workspace is intentionally local to one browser profile. There is no shared backend state or cross-device sync.
+
+## Constraints
+
+- The client runtime is the source of truth. The server does not own task state.
+- Assistant tools are constrained to the client runtime surface.
+- Hover grounding is ephemeral UI context, not lineaged state.
+- Lineage entries are searchable and inspectable, but not directly restorable by the assistant.
+- The app uses webpack in `pnpm dev` and `pnpm build` so the Manifesto compiler/codegen pipeline can process `.mel` imports on the live Next.js path.
+
+## Key Entry Points
+
+- [`src/components/taskflow/TaskFlowPageClient.tsx`](./src/components/taskflow/TaskFlowPageClient.tsx)
 - [`src/hooks/useTaskFlow.ts`](./src/hooks/useTaskFlow.ts)
-- [`src/lib/taskflow-shell-state.ts`](./src/lib/taskflow-shell-state.ts)
-- [`docs/UI-CONTRACT.md`](./docs/UI-CONTRACT.md)
+- [`src/hooks/useTaskFlowAssistant.ts`](./src/hooks/useTaskFlowAssistant.ts)
+- [`src/lib/taskflow-runtime-controller.ts`](./src/lib/taskflow-runtime-controller.ts)
+- [`src/app/api/assistant/route.ts`](./src/app/api/assistant/route.ts)
+- [`src/domain/taskflow.mel`](./src/domain/taskflow.mel)
 
-The surviving app-facing types remain in [`src/types/taskflow.ts`](./src/types/taskflow.ts).
+## Docs
 
-## Commands
-
-```bash
-pnpm dev
-pnpm typecheck
-pnpm lint
-pnpm test
-pnpm build
-```
-
-## Rebuild Rule
-
-Do not incrementally revive the deleted runtime files. The next SDK integration should start from this shell boundary and reconnect the app to the SDK `3.8.x` surface intentionally.
+- [Architecture](./docs/ARCHITECTURE.md)
+- [UI Contract](./docs/UI-CONTRACT.md)

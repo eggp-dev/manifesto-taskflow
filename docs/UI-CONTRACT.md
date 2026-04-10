@@ -1,58 +1,97 @@
 # TaskFlow UI Contract
 
-This document defines the preserved shell boundary for the next SDK `3.8.x` rebuild.
+This document defines the state and action contract that the TaskFlow UI consumes today.
 
 ## Core Types
 
-These app-facing types remain the source of truth:
+The main app-facing types live in [`src/types/taskflow.ts`](../src/types/taskflow.ts):
 
+- `Task`
+- `TaskDraft`
 - `TaskStatus`
 - `TaskPriority`
 - `ViewMode`
 - `DateFilter`
-- `Task`
-- `AssistantMessage`
+- `TaskFlowClockStamp`
+- `TaskFlowHistoryEntry`
 
-They live in [`src/types/taskflow.ts`](../src/types/taskflow.ts).
+Assistant-facing contract types live in [`src/types/taskflow-assistant.ts`](../src/types/taskflow-assistant.ts), including:
 
-## Shell State
+- `TaskFlowAgentContext`
+- `TaskFlowHoveredTarget`
+- `TaskFlowAssistantUIMessage`
 
-The active controller is local-only and fixture-backed. The base state is:
+## Runtime-Backed View State
 
-- `tasks: Task[]`
-- `selectedTaskId: string | null`
-- `viewMode: ViewMode`
-- `dateFilter: DateFilter | null`
-- `assistantOpen: boolean`
+[`useTaskFlow`](../src/hooks/useTaskFlow.ts) returns:
 
-Derived state is computed locally from that base:
+- `ready: boolean`
+- `state: TaskFlowViewState | null`
+- `actions: TaskFlowActions`
 
-- `selectedTask`
-- `activeTasks`
-- `deletedTasks`
-- `todoTasks`
-- `inProgressTasks`
-- `reviewTasks`
-- `doneTasks`
-- `totalCount`
-- `todoCount`
-- `inProgressCount`
-- `reviewCount`
-- `doneCount`
-- `deletedCount`
+`TaskFlowViewState` is assembled by [`TaskFlowRuntimeController`](../src/lib/taskflow-runtime-controller.ts) from the live Manifesto snapshot plus controller-owned UI state.
 
-Implementation seam:
+The runtime-backed portion of the view state includes:
 
-- [`src/lib/taskflow-shell-state.ts`](../src/lib/taskflow-shell-state.ts)
-- [`src/hooks/useTaskFlow.ts`](../src/hooks/useTaskFlow.ts)
+- base state: `tasks`, `selectedTaskId`, `viewMode`, `assistantOpen`, `clock`
+- derived task projections:
+  - `activeTasks`
+  - `deletedTasks`
+  - `todoTasks`
+  - `inProgressTasks`
+  - `reviewTasks`
+  - `doneTasks`
+  - `schedulableTasks`
+  - `dueTodayTasks`
+  - `overdueTasks`
+  - `selectedTask`
+- derived counts:
+  - `totalCount`
+  - `todoCount`
+  - `inProgressCount`
+  - `reviewCount`
+  - `doneCount`
+  - `deletedCount`
+  - `dueTodayCount`
+  - `overdueCount`
+- lineage-backed context:
+  - `historyEntries`
+  - `activeBranchName`
+  - `visibleWorldId`
 
-## Supported Actions
+This state is snapshot-driven and remains aligned with the activated MEL domain.
 
-The shell action surface is intentionally narrow:
+## Ephemeral UI Session State
 
-- `selectTask(id | null)`
+Some UI state is intentionally not lineaged and not persisted as domain snapshot state.
+
+Ephemeral session fields exposed through `TaskFlowViewState`:
+
+- `dateFilter`
+- `hoveredTarget`
+- `historyOpen`
+- `createDialogOpen`
+- `datePickerOpen`
+
+Important boundary:
+
+- `hoveredTarget` is semantic assistant grounding state only
+- it is not written to MEL state
+- it is not stored in lineage worlds
+- it is cleared on session reset
+
+Hover registration itself is handled through [`useTaskFlowSemanticHoverTarget`](../src/hooks/useTaskFlowSemanticHoverTarget.ts).
+
+## UI Action Surface
+
+The UI writes through `TaskFlowActions`, exposed from [`useTaskFlow`](../src/hooks/useTaskFlow.ts).
+
+Lineaged actions:
+
+- `createTask(draft)`
+- `updateTask(id, draft)`
+- `selectTask(taskId | null)`
 - `changeView(mode)`
-- `setDateFilter(filter | null)`
 - `moveTask(taskId, newStatus)`
 - `softDeleteTask(id)`
 - `restoreTask(id)`
@@ -60,36 +99,86 @@ The shell action surface is intentionally narrow:
 - `emptyTrash()`
 - `toggleAssistant(open)`
 
-There is no `dispatch`, runtime instance, intent layer, persistence layer, or network API in the active app path.
+Client-only UI actions:
+
+- `setDateFilter(filter | null)`
+- `setHistoryOpen(open)`
+- `setCreateDialogOpen(open)`
+- `setDatePickerOpen(open)`
+
+Contract rule:
+
+- lineaged actions commit through the client runtime and appear in history
+- client-only UI actions do not create lineage worlds
+
+## Assistant Contract
+
+[`useTaskFlowAssistant`](../src/hooks/useTaskFlowAssistant.ts) is the assistant-facing UI seam.
+
+Client responsibility:
+
+- prepare the latest `TaskFlowAgentContext`
+- execute tool calls against the local runtime
+- persist assistant chat locally
+- gate `delete_task` behind explicit confirmation
+
+Server responsibility:
+
+- validate the request payload
+- construct the system prompt
+- register tool schemas
+- stream model output and tool calls
+
+The assistant tool surface is:
+
+- CRUD tools:
+  - `create_task`
+  - `update_task`
+  - `move_task`
+  - `delete_task`
+  - `restore_task`
+  - `select_task`
+- lineage read tool:
+  - `search_lineage`
+- hover tools:
+  - `inspect_hovered_target`
+  - `activate_hovered_target`
+
+`TaskFlowAgentContext` includes:
+
+- raw snapshot data/computed/system
+- active and deleted task summaries
+- counts
+- recent history
+- causal graph
+- selected task
+- hovered semantic target
 
 ## Component Expectations
 
-[`src/app/page.tsx`](../src/app/page.tsx) composes the preserved shell and expects:
+[`TaskFlowPageClient`](../src/components/taskflow/TaskFlowPageClient.tsx) composes the application around this contract.
 
-- local shell state from `useTaskFlow`
-- date-filtered active task lists
-- responsive detail and assistant panels
+View components:
 
-Surviving view/sidebar/assistant components remain props-driven:
+- Todo, Kanban, and Table consume filtered active tasks plus selection state
+- Trash consumes deleted tasks and destructive actions
+- Task detail consumes the selected task and save/delete callbacks
 
-- Kanban/Todo/Table render active tasks and selection state
-- Trash renders deleted tasks and destructive actions
-- Task detail renders the selected task
-- Assistant renders static disabled-shell messaging and does not execute requests
+Assistant components:
 
-## Explicit Non-Goals
+- the assistant panel consumes live `TaskFlowAssistantUIMessage[]`
+- tool cards render step state, results, lineage matches, inspections, and collapsible snapshot diffs
+- hovered references can be resolved to tasks, header actions, or lineage entries
 
-- No SDK activation
-- No intent parsing or lowering
-- No `/api/agent` routes
-- No legacy runtime restore for convenience
+History components:
 
-## Domain Source
+- `LineagePanel` consumes `historyEntries`, active branch information, and the currently hovered lineage world
+- it behaves as a read-only explorer, not a restore or branch-management UI
 
-The shell still does not execute a Manifesto runtime, but the domain source is present and wired into Next for compile/codegen:
+## Explicit Boundaries
 
-- [`src/domain/taskflow.mel`](../src/domain/taskflow.mel)
-- [`src/domain/taskflow.schema.ts`](../src/domain/taskflow.schema.ts)
-- [`src/domain/taskflow.domain.ts`](../src/domain/taskflow.domain.ts)
-
-That seam exists so the app uses a real `.mel` import path and webpack codegen stays current while the runtime rebuild is pending.
+- There is no server-owned canonical runtime.
+- There is no shared persistence or collaborative state.
+- Assistant operations are grounded in the local client runtime only.
+- Hover context is ephemeral and local.
+- The assistant cannot restore worlds, switch branches, or directly activate lineage entries.
