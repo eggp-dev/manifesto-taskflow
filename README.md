@@ -1,6 +1,6 @@
 # TaskFlow
 
-TaskFlow is a Manifesto-powered task workspace demo that runs its domain runtime in the browser and layers a lineage-aware assistant on top of the same local state.
+TaskFlow is the first public showcase in this repo for using Manifesto as the application state engine, not just as an isolated domain model. It runs a Manifesto domain runtime in the browser, records continuity through Lineage, and layers a lineage-aware assistant on top of the same local state.
 
 ## What It Does
 
@@ -14,6 +14,8 @@ TaskFlow is a Manifesto-powered task workspace demo that runs its domain runtime
 ## Architecture Summary
 
 The UI is rendered by Next.js and composed in [`src/components/taskflow/TaskFlowPageClient.tsx`](./src/components/taskflow/TaskFlowPageClient.tsx). Runtime ownership stays on the client through [`src/hooks/useTaskFlow.ts`](./src/hooks/useTaskFlow.ts) and [`src/lib/taskflow-runtime-controller.ts`](./src/lib/taskflow-runtime-controller.ts), which activate the Manifesto + Lineage runtime, persist local state, and expose view actions. The server route at [`src/app/api/assistant/route.ts`](./src/app/api/assistant/route.ts) only orchestrates model streaming and tool schemas. TaskFlow's domain source remains authored in [`src/domain/taskflow.mel`](./src/domain/taskflow.mel), imported through [`src/domain/taskflow.schema.ts`](./src/domain/taskflow.schema.ts), and code-generated into [`src/domain/taskflow.domain.ts`](./src/domain/taskflow.domain.ts) during webpack builds.
+
+This repo is intentionally opinionated about the integration direction: Manifesto owns meaning and state transitions, the UI reads projected snapshot state, Lineage records continuity, and the assistant operates through the same runtime contract instead of bypassing it with ad hoc client state mutations.
 
 ## Quickstart
 

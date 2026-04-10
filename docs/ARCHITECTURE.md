@@ -1,6 +1,18 @@
 # TaskFlow Architecture
 
-This document describes the current TaskFlow architecture as implemented in the repo today.
+This document describes the current TaskFlow architecture as implemented in the repo today, with a Manifesto-first framing. TaskFlow is intended to serve as a showcase of how Manifesto can sit at the center of an interactive product UI rather than being treated as a backend-only or toy domain layer.
+
+## Showcase Goal
+
+TaskFlow is not meant to demonstrate a generic kanban app architecture. It is meant to demonstrate a specific integration direction:
+
+- Manifesto owns the domain state and transition semantics
+- the UI renders directly from projected snapshot state
+- Lineage upgrades state transitions into visible continuity and history
+- assistant actions are routed through the same runtime contract as manual UI actions
+- ephemeral UI context, such as semantic hover, is composed around the runtime instead of replacing it
+
+The important architectural question in this repo is therefore not just "how does the UI work?" but "how does a modern UI stay integrated with a Manifesto runtime without forking its own state model?"
 
 ## System Overview
 
@@ -14,6 +26,19 @@ Primary implementation seams:
 - [`TaskFlowRuntimeController`](../src/lib/taskflow-runtime-controller.ts)
 - [`/api/assistant`](../src/app/api/assistant/route.ts)
 - [`taskflow.mel`](../src/domain/taskflow.mel)
+
+## Manifesto Integration Direction
+
+TaskFlow demonstrates the following usage pattern for Manifesto in a product UI:
+
+- author the domain in MEL
+- import the `.mel` source through the real application module graph
+- activate the runtime where the application actually owns state
+- treat `getSnapshot()` as the app-facing read model
+- route both manual UI actions and assistant tool execution through runtime intents
+- let Lineage record continuity for meaningful actions instead of inventing a separate app history model
+
+In other words, the UI is not a parallel state machine with Manifesto bolted on the side. The UI is a consumer of Manifesto's projected state and a producer of Manifesto intents.
 
 ## High-Level Diagram
 
@@ -43,6 +68,8 @@ The controller exposes a single view model consumed through [`useTaskFlow`](../s
 
 The page itself does not talk to Manifesto directly. [`TaskFlowPageClient`](../src/components/taskflow/TaskFlowPageClient.tsx) renders views, detail panels, history, dialogs, and the assistant against the controller-owned contract.
 
+This controller layer is the main UI integration seam. It keeps the React tree from needing to know about runtime activation details while still ensuring that the runtime remains the underlying source of truth.
+
 ## MEL, Codegen, and Build Path
 
 The domain is authored in [`src/domain/taskflow.mel`](../src/domain/taskflow.mel). It defines:
@@ -60,6 +87,8 @@ Relevant build seams:
 - [`manifesto.config.ts`](../manifesto.config.ts) keeps repo-level tooling configuration aligned with the current setup.
 - `pnpm dev` and `pnpm build` both run with webpack to preserve `.mel` processing.
 
+This path matters for the showcase because it demonstrates that MEL is part of the real app graph, not a disconnected artifact or a documentation-only sample.
+
 ## Lineage Model
 
 TaskFlow commits one lineage world per meaningful intent. That includes domain mutations and selected UI actions that are intentionally tracked as part of user flow.
@@ -73,6 +102,8 @@ Lineage responsibilities:
 - history panel rendering in [`LineagePanel`](../src/components/history/LineagePanel.tsx)
 
 The assistant receives both `recentHistory` and a causal graph so it can reason about how the current snapshot was reached, not just what the current snapshot contains.
+
+This is part of the Manifesto showcase value: once execution is committed through a lineage runtime, UI history and agent history no longer need to be invented as separate product systems.
 
 ## Clock Model
 
@@ -103,6 +134,8 @@ Actual task execution happens on the client:
 - tool results are fed back into the chat loop
 - the assistant is capped to a short multi-step loop
 
+This is intentional. The showcase is demonstrating that LLM orchestration does not need to own the app state. The model can stay on the server while the product runtime remains local, typed, and grounded in the same Manifesto snapshot the UI is reading.
+
 Special cases:
 
 - `delete_task` requires explicit client confirmation before the commit is applied
@@ -124,6 +157,8 @@ Current hover target kinds:
 - lineage entries
 
 Hovered lineage entries are read-only. They can be inspected or used to drive lineage search, but they are not directly activated.
+
+This split is also part of the integration story: UI semantics that matter for interpretation can be composed around Manifesto without polluting the core runtime with raw pointer noise.
 
 ## Persistence Model
 
@@ -147,3 +182,15 @@ Persistence rules:
 - Assistant tools operate against the current client runtime contract only.
 - World restore, branch switching, and similar lineage control flows are not exposed to the assistant.
 - `pnpm build` currently emits a non-blocking `baseline-browser-mapping` outdated-data warning.
+
+## Why This Matters
+
+For Manifesto, the point of this architecture is not just that TaskFlow works. The point is that the repo now shows a coherent UI integration model:
+
+- MEL for domain definition
+- activated runtime as application state
+- Lineage as continuity and explainability
+- React as a snapshot renderer
+- LLMs as tool users over the same runtime contract
+
+That is the primary architectural story this showcase is intended to tell.

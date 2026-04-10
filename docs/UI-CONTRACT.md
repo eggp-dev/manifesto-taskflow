@@ -1,6 +1,6 @@
 # TaskFlow UI Contract
 
-This document defines the state and action contract that the TaskFlow UI consumes today.
+This document defines the state and action contract that the TaskFlow UI consumes today. For the higher-level Manifesto integration story, see [`ARCHITECTURE.md`](./ARCHITECTURE.md).
 
 ## Core Types
 
