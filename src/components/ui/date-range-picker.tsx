@@ -16,6 +16,7 @@ import {
 import {
   getDateRangeFromType,
 } from '@/lib/date-filter';
+import { getReferenceDate } from '@/lib/taskflow-clock';
 import type { DateFilter, DateFilterField, DateFilterType } from '@/types/taskflow';
 
 interface DateRangePickerProps {
@@ -23,6 +24,7 @@ interface DateRangePickerProps {
   onChange?: (filter: DateFilter | null) => void;
   className?: string;
   placeholder?: string;
+  referenceNow?: string | null;
 }
 
 const presets = [
@@ -37,6 +39,7 @@ export function DateRangePicker({
   onChange,
   className,
   placeholder = 'Filter by date',
+  referenceNow,
 }: DateRangePickerProps) {
   const [open, setOpen] = React.useState(false);
   const [selectedField, setSelectedField] = React.useState<DateFilterField>(value?.field ?? 'createdAt');
@@ -54,7 +57,7 @@ export function DateRangePicker({
       return;
     }
 
-    const range = getDateRangeFromType(type);
+    const range = getDateRangeFromType(type, referenceNow);
     if (range) {
       onChange?.({
         field: selectedField,
@@ -187,7 +190,7 @@ export function DateRangePicker({
                 selected={customRange}
                 onSelect={handleCustomRangeSelect}
                 numberOfMonths={1}
-                defaultMonth={customRange?.from ?? new Date()}
+                defaultMonth={customRange?.from ?? getReferenceDate(referenceNow)}
               />
               {customRange?.from && customRange?.to && (
                 <div className="px-2 pb-2">

@@ -186,7 +186,6 @@ export function TaskDetailPanel({ task, onClose, onDelete, onSave }: TaskDetailP
         <div className="border-t bg-muted/30 p-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-xs text-muted-foreground">
-              Human edits now commit through the same MEL runtime as drag, delete, and restore.
             </p>
             <div className="flex items-center gap-2">
               <Button

@@ -4,6 +4,7 @@ import { compile } from '@manifesto-ai/compiler';
 import { createInMemoryLineageStore, withLineage } from '@manifesto-ai/lineage';
 import { createLineageService } from '@manifesto-ai/lineage/provider';
 import { createManifesto } from '@manifesto-ai/sdk';
+import { createClockStamp } from '@/lib/taskflow-clock';
 import type { Task } from '@/types/taskflow';
 import type { TaskFlowRuntimeDomain } from '@/types/taskflow-runtime';
 
@@ -33,6 +34,9 @@ async function createRuntime() {
 describe('taskflow lineage runtime', () => {
   it('commits task changes into lineage history', async () => {
     const { runtime, service } = await createRuntime();
+    const createStamp = createClockStamp(new Date('2026-04-10T00:00:00.000Z'));
+    const updateStamp = createClockStamp(new Date('2026-04-10T01:00:00.000Z'));
+    const moveStamp = createClockStamp(new Date('2026-04-10T02:00:00.000Z'));
     const task: Task = {
       id: 'lineage-task-1',
       title: 'Connect lineage',
@@ -41,6 +45,7 @@ describe('taskflow lineage runtime', () => {
       priority: 'high',
       assignee: null,
       dueDate: null,
+      dueDateTimestamp: 0,
       tags: ['lineage'],
       createdAt: '2026-04-10T00:00:00.000Z',
       updatedAt: '2026-04-10T00:00:00.000Z',
@@ -48,7 +53,7 @@ describe('taskflow lineage runtime', () => {
     };
 
     await runtime.commitAsync(
-      runtime.createIntent(runtime.MEL.actions.createTask, task),
+      runtime.createIntent(runtime.MEL.actions.createTask, task, createStamp),
     );
     await runtime.commitAsync(
       runtime.createIntent(runtime.MEL.actions.updateTask, {
@@ -59,12 +64,13 @@ describe('taskflow lineage runtime', () => {
         priority: 'medium',
         assignee: 'SDK Team',
         dueDate: '2026-04-11T12:00:00.000Z',
+        dueDateTimestamp: new Date('2026-04-11T12:00:00.000Z').getTime(),
         tags: ['lineage', 'crud'],
         updatedAt: '2026-04-10T01:00:00.000Z',
-      }),
+      }, updateStamp),
     );
     await runtime.commitAsync(
-      runtime.createIntent(runtime.MEL.actions.moveTask, task.id, 'done'),
+      runtime.createIntent(runtime.MEL.actions.moveTask, task.id, 'done', moveStamp),
     );
 
     const snapshot = runtime.getSnapshot();
@@ -79,9 +85,11 @@ describe('taskflow lineage runtime', () => {
       priority: 'medium',
       assignee: 'SDK Team',
       dueDate: '2026-04-11T12:00:00.000Z',
+      dueDateTimestamp: new Date('2026-04-11T12:00:00.000Z').getTime(),
       tags: ['lineage', 'crud'],
     });
     expect(snapshot.computed.doneCount).toBe(1);
+    expect(snapshot.data.clock).toEqual(moveStamp);
     expect(heads).toHaveLength(1);
     expect(heads[0]?.worldId).toBe(branch.head);
     expect(attempts.length).toBeGreaterThanOrEqual(4);

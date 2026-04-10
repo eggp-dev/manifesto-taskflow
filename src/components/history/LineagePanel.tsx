@@ -13,10 +13,6 @@ interface LineagePanelProps {
   onClose: () => void;
 }
 
-function shortenId(value: string): string {
-  return value.slice(0, 12);
-}
-
 export function LineagePanel({
   activeBranchName,
   entries,
@@ -78,9 +74,7 @@ export function LineagePanel({
                   <span>{formatDistanceToNow(entry.createdAt, { addSuffix: true })}</span>
                 </div>
 
-                <div className="mt-3 space-y-1 text-xs text-muted-foreground">
-                  <p>World: {shortenId(entry.worldId)}</p>
-                  <p>Attempt: {shortenId(entry.attemptId)}</p>
+                <div className="space-y-1 text-xs text-muted-foreground">
                   <p>{format(entry.createdAt, 'MMM d, yyyy h:mm:ss a')}</p>
                 </div>
               </article>

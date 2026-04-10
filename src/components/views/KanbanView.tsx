@@ -90,8 +90,13 @@ function SortableTask({ task, isSelected, onSelect }: SortableTaskProps) {
 function DroppableColumn({ status, children }: { status: TaskStatus; children: React.ReactNode }) {
   const { setNodeRef } = useDroppable({ id: `column:${status}` });
   return (
-    <div ref={setNodeRef} className="flex-1 space-y-2 rounded-b-lg bg-muted/50 p-2 min-h-[80px]">
-      {children}
+    <div
+      ref={setNodeRef}
+      className="flex min-h-0 flex-1 flex-col rounded-b-lg bg-muted/50 p-2"
+    >
+      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1">
+        {children}
+      </div>
     </div>
   );
 }
@@ -156,13 +161,13 @@ export function KanbanView({
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <div className="flex h-full gap-4 overflow-x-auto pb-4 snap-x sm:snap-none">
+      <div className="flex h-full min-h-0 items-stretch gap-4 overflow-x-auto overflow-y-hidden pb-4 snap-x sm:snap-none">
         {groupedTasks.map((column) => (
           <section
             key={column.status}
-            className="flex w-[85vw] flex-shrink-0 snap-center flex-col sm:w-auto sm:min-w-[280px] sm:flex-1 sm:max-w-[320px]"
+            className="flex h-full min-h-0 w-[85vw] flex-shrink-0 snap-center flex-col sm:w-auto sm:min-w-[280px] sm:flex-1 sm:max-w-[320px]"
           >
-            <div className={cn('rounded-t-lg p-3', column.tone)}>
+            <div className={cn('shrink-0 rounded-t-lg p-3', column.tone)}>
               <div className="flex items-center justify-between">
                 <h3 className="font-semibold">{column.label}</h3>
                 <Badge variant="secondary">{column.tasks.length}</Badge>

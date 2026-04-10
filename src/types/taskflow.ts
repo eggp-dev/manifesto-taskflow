@@ -15,6 +15,23 @@ export interface DateFilter {
   endDate?: Date;
 }
 
+export interface TaskFlowClockStamp {
+  now: string;
+  timezone: string;
+  todayStartAt: string;
+  todayEndAt: string;
+  todayStartTs: number;
+  todayEndTs: number;
+  weekStartAt: string;
+  weekEndAt: string;
+  weekStartTs: number;
+  weekEndTs: number;
+  monthStartAt: string;
+  monthEndAt: string;
+  monthStartTs: number;
+  monthEndTs: number;
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -23,6 +40,7 @@ export interface Task {
   priority: TaskPriority;
   assignee: string | null;
   dueDate: string | null;
+  dueDateTimestamp: number;
   tags: string[];
   createdAt: string;
   updatedAt: string;

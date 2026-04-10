@@ -2,6 +2,22 @@ domain TaskFlow {
   type TaskStatus = "todo" | "in-progress" | "review" | "done"
   type TaskPriority = "low" | "medium" | "high"
   type ViewMode = "kanban" | "todo" | "table" | "trash"
+  type ClockStamp = {
+    now: string,
+    timezone: string,
+    todayStartAt: string,
+    todayEndAt: string,
+    todayStartTs: number,
+    todayEndTs: number,
+    weekStartAt: string,
+    weekEndAt: string,
+    weekStartTs: number,
+    weekEndTs: number,
+    monthStartAt: string,
+    monthEndAt: string,
+    monthStartTs: number,
+    monthEndTs: number
+  }
 
   type Task = {
     id: string,
@@ -11,6 +27,7 @@ domain TaskFlow {
     priority: TaskPriority,
     assignee: string | null,
     dueDate: string | null,
+    dueDateTimestamp: number,
     tags: Array<string>,
     createdAt: string,
     updatedAt: string,
@@ -22,6 +39,7 @@ domain TaskFlow {
     selectedTaskId: string | null = null
     viewMode: ViewMode = "kanban"
     assistantOpen: boolean = false
+    clock: ClockStamp | null = null
   }
 
   computed activeTasks = filter(tasks, isNull($item.deletedAt))
@@ -30,6 +48,17 @@ domain TaskFlow {
   computed inProgressTasks = filter(activeTasks, eq($item.status, "in-progress"))
   computed reviewTasks = filter(activeTasks, eq($item.status, "review"))
   computed doneTasks = filter(activeTasks, eq($item.status, "done"))
+  computed schedulableTasks = filter(activeTasks, and(gt($item.dueDateTimestamp, 0), neq($item.status, "done")))
+  computed dueTodayTasks = cond(
+    isNull(clock),
+    [],
+    filter(schedulableTasks, and(gte($item.dueDateTimestamp, clock.todayStartTs), lte($item.dueDateTimestamp, clock.todayEndTs)))
+  )
+  computed overdueTasks = cond(
+    isNull(clock),
+    [],
+    filter(schedulableTasks, lt($item.dueDateTimestamp, clock.todayStartTs))
+  )
   computed selectedTask = findById(tasks, selectedTaskId)
   computed totalCount = len(activeTasks)
   computed todoCount = len(todoTasks)
@@ -37,14 +66,17 @@ domain TaskFlow {
   computed reviewCount = len(reviewTasks)
   computed doneCount = len(doneTasks)
   computed deletedCount = len(deletedTasks)
+  computed dueTodayCount = len(dueTodayTasks)
+  computed overdueCount = len(overdueTasks)
 
-  action createTask(task: Task) {
+  action createTask(task: Task, stamp: ClockStamp) {
     onceIntent {
       patch tasks = append(tasks, task)
+      patch clock = stamp
     }
   }
 
-  action updateTask(task: Task)
+  action updateTask(task: Task, stamp: ClockStamp)
     dispatchable when existsById(tasks, task.id) {
     onceIntent {
       patch tasks = updateById(tasks, task.id, {
@@ -54,72 +86,84 @@ domain TaskFlow {
         priority: task.priority,
         assignee: task.assignee,
         dueDate: task.dueDate,
+        dueDateTimestamp: task.dueDateTimestamp,
         tags: task.tags,
         createdAt: task.createdAt,
         updatedAt: task.updatedAt,
         deletedAt: task.deletedAt
       })
+      patch clock = stamp
     }
   }
 
-  action moveTask(taskId: string, newStatus: TaskStatus)
+  action moveTask(taskId: string, newStatus: TaskStatus, stamp: ClockStamp)
     dispatchable when existsById(tasks, taskId) {
     onceIntent {
       patch tasks = updateById(tasks, taskId, {
-        status: newStatus
+        status: newStatus,
+        updatedAt: stamp.now
       })
+      patch clock = stamp
     }
   }
 
-  action softDeleteTask(id: string, timestamp: string)
+  action softDeleteTask(id: string, stamp: ClockStamp)
     dispatchable when existsById(tasks, id) {
     onceIntent {
       patch tasks = updateById(tasks, id, {
-        deletedAt: timestamp,
-        updatedAt: timestamp
+        deletedAt: stamp.now,
+        updatedAt: stamp.now
       })
+      patch clock = stamp
     }
   }
 
-  action restoreTask(id: string)
+  action restoreTask(id: string, stamp: ClockStamp)
     dispatchable when existsById(tasks, id) {
     onceIntent {
       patch tasks = updateById(tasks, id, {
-        deletedAt: null
+        deletedAt: null,
+        updatedAt: stamp.now
       })
+      patch clock = stamp
     }
   }
 
-  action permanentlyDeleteTask(id: string)
+  action permanentlyDeleteTask(id: string, stamp: ClockStamp)
     dispatchable when existsById(tasks, id) {
     onceIntent {
       patch tasks = removeById(tasks, id)
+      patch clock = stamp
     }
   }
 
-  action emptyTrash()
+  action emptyTrash(stamp: ClockStamp)
     available when gt(deletedCount, 0) {
     onceIntent {
       patch tasks = filter(tasks, isNull($item.deletedAt))
+      patch clock = stamp
     }
   }
 
-  action selectTask(taskId: string | null)
+  action selectTask(taskId: string | null, stamp: ClockStamp)
     dispatchable when or(isNull(taskId), existsById(tasks, taskId)) {
     onceIntent {
       patch selectedTaskId = taskId
+      patch clock = stamp
     }
   }
 
-  action changeView(mode: ViewMode) {
+  action changeView(mode: ViewMode, stamp: ClockStamp) {
     onceIntent {
       patch viewMode = mode
+      patch clock = stamp
     }
   }
 
-  action toggleAssistant(open: boolean) {
+  action toggleAssistant(open: boolean, stamp: ClockStamp) {
     onceIntent {
       patch assistantOpen = open
+      patch clock = stamp
     }
   }
 }

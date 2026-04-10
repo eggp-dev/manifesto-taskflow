@@ -1,4 +1,5 @@
 import type {
+  TaskFlowClockStamp,
   Task,
   TaskStatus,
   ViewMode,
@@ -10,6 +11,7 @@ export interface TaskFlowRuntimeDomain {
     selectedTaskId: string | null;
     viewMode: ViewMode;
     assistantOpen: boolean;
+    clock: TaskFlowClockStamp | null;
   };
   readonly computed: {
     activeTasks: Task[];
@@ -18,6 +20,9 @@ export interface TaskFlowRuntimeDomain {
     inProgressTasks: Task[];
     reviewTasks: Task[];
     doneTasks: Task[];
+    schedulableTasks: Task[];
+    dueTodayTasks: Task[];
+    overdueTasks: Task[];
     selectedTask: Task | null;
     totalCount: number;
     todoCount: number;
@@ -25,17 +30,19 @@ export interface TaskFlowRuntimeDomain {
     reviewCount: number;
     doneCount: number;
     deletedCount: number;
+    dueTodayCount: number;
+    overdueCount: number;
   };
   readonly actions: {
-    createTask: (task: Task) => void;
-    updateTask: (task: Task) => void;
-    moveTask: (taskId: string, newStatus: TaskStatus) => void;
-    softDeleteTask: (id: string, timestamp: string) => void;
-    restoreTask: (id: string) => void;
-    permanentlyDeleteTask: (id: string) => void;
-    emptyTrash: () => void;
-    selectTask: (taskId: string | null) => void;
-    changeView: (mode: ViewMode) => void;
-    toggleAssistant: (open: boolean) => void;
+    createTask: (task: Task, stamp: TaskFlowClockStamp) => void;
+    updateTask: (task: Task, stamp: TaskFlowClockStamp) => void;
+    moveTask: (taskId: string, newStatus: TaskStatus, stamp: TaskFlowClockStamp) => void;
+    softDeleteTask: (id: string, stamp: TaskFlowClockStamp) => void;
+    restoreTask: (id: string, stamp: TaskFlowClockStamp) => void;
+    permanentlyDeleteTask: (id: string, stamp: TaskFlowClockStamp) => void;
+    emptyTrash: (stamp: TaskFlowClockStamp) => void;
+    selectTask: (taskId: string | null, stamp: TaskFlowClockStamp) => void;
+    changeView: (mode: ViewMode, stamp: TaskFlowClockStamp) => void;
+    toggleAssistant: (open: boolean, stamp: TaskFlowClockStamp) => void;
   };
 }
