@@ -1,23 +1,42 @@
-# TaskFlow
+# TaskFlow: Manifesto UI Showcase
 
-TaskFlow is the first public showcase in this repo for using Manifesto as the application state engine, not just as an isolated domain model. It runs a Manifesto domain runtime in the browser, records continuity through Lineage, and layers a lineage-aware assistant on top of the same local state.
+TaskFlow is the first end-to-end showcase in this repo for using Manifesto as the state engine of a real interactive product UI. It demonstrates a concrete integration direction: MEL defines the domain, an activated Manifesto runtime owns application state, Lineage turns execution into visible continuity, and an assistant operates through the same runtime contract instead of bypassing it.
 
-## What It Does
+## What This Showcase Is Proving
 
-- Manual task CRUD backed by a client-owned Manifesto runtime
-- Lineage history with visible branch/head context
-- Live multi-step assistant with tool calling
+TaskFlow is meant to show that Manifesto can sit in the middle of a modern UI system, not off to the side as an isolated rules engine.
+
+This repo demonstrates:
+
+- a client-owned Manifesto runtime as the source of truth
+- MEL on the real app path through `.mel` imports and webpack codegen
+- Lineage as a product feature, not just an internal log
+- manual UI actions and assistant tool calls converging on the same runtime
+- semantic UI grounding around the runtime, without polluting core state
+- browser-local persistence for a self-contained interactive demo
+
+## What You Can Experience
+
+- Manual task CRUD backed by Manifesto + Lineage
+- A visible lineage history panel with branch/head context
+- A live multi-step assistant that uses tool calling
 - Hover-grounded references such as "this", "that", and hovered header actions
-- Lineage search from the assistant
-- Browser-local persistence for lineage state and assistant chat
+- Lineage search from inside the assistant
+- Local persistence for lineage state and assistant chat
 
-## Architecture Summary
+## Manifesto-First Architecture
 
-The UI is rendered by Next.js and composed in [`src/components/taskflow/TaskFlowPageClient.tsx`](./src/components/taskflow/TaskFlowPageClient.tsx). Runtime ownership stays on the client through [`src/hooks/useTaskFlow.ts`](./src/hooks/useTaskFlow.ts) and [`src/lib/taskflow-runtime-controller.ts`](./src/lib/taskflow-runtime-controller.ts), which activate the Manifesto + Lineage runtime, persist local state, and expose view actions. The server route at [`src/app/api/assistant/route.ts`](./src/app/api/assistant/route.ts) only orchestrates model streaming and tool schemas. TaskFlow's domain source remains authored in [`src/domain/taskflow.mel`](./src/domain/taskflow.mel), imported through [`src/domain/taskflow.schema.ts`](./src/domain/taskflow.schema.ts), and code-generated into [`src/domain/taskflow.domain.ts`](./src/domain/taskflow.domain.ts) during webpack builds.
+The architectural story is the point of this repo.
 
-This repo is intentionally opinionated about the integration direction: Manifesto owns meaning and state transitions, the UI reads projected snapshot state, Lineage records continuity, and the assistant operates through the same runtime contract instead of bypassing it with ad hoc client state mutations.
+- [`src/domain/taskflow.mel`](./src/domain/taskflow.mel) defines the domain state, actions, and computed projections.
+- [`src/domain/taskflow.schema.ts`](./src/domain/taskflow.schema.ts) keeps the `.mel` source on the live Next.js path so webpack codegen emits [`src/domain/taskflow.domain.ts`](./src/domain/taskflow.domain.ts).
+- [`src/lib/taskflow-runtime-controller.ts`](./src/lib/taskflow-runtime-controller.ts) activates the Manifesto + Lineage runtime in the browser and exposes the app-facing view contract.
+- [`src/components/taskflow/TaskFlowPageClient.tsx`](./src/components/taskflow/TaskFlowPageClient.tsx) renders the product UI from projected snapshot state.
+- [`src/app/api/assistant/route.ts`](./src/app/api/assistant/route.ts) only orchestrates model streaming and tool schemas; it does not own task state.
 
-## Quickstart
+The intended direction is explicit: Manifesto owns meaning and transitions, React renders projected state, Lineage explains how the app got here, and the assistant is just another runtime consumer.
+
+## Run the Showcase
 
 1. Install dependencies:
 
@@ -51,22 +70,18 @@ This repo is intentionally opinionated about the integration direction: Manifest
    pnpm build
    ```
 
-## Local Persistence
+## Demo Constraints
 
-- TaskFlow stores lineage runtime state in `localStorage`.
-- Assistant chat history is also stored in `localStorage`.
-- If the MEL/schema hash changes, persisted lineage state is discarded and the app reseeds from fixtures.
-- The workspace is intentionally local to one browser profile. There is no shared backend state or cross-device sync.
-
-## Constraints
-
-- The client runtime is the source of truth. The server does not own task state.
-- Assistant tools are constrained to the client runtime surface.
-- Hover grounding is ephemeral UI context, not lineaged state.
+- The client runtime is the source of truth.
+- The server does not own task state.
+- The workspace is local to one browser profile.
+- Lineage and assistant chat are stored in `localStorage`.
+- Schema hash mismatches invalidate stored lineage state and reseed the demo.
+- Hover grounding is ephemeral UI context, not lineaged domain state.
 - Lineage entries are searchable and inspectable, but not directly restorable by the assistant.
-- The app uses webpack in `pnpm dev` and `pnpm build` so the Manifesto compiler/codegen pipeline can process `.mel` imports on the live Next.js path.
+- `pnpm dev` and `pnpm build` intentionally use webpack so the Manifesto compiler/codegen pipeline can process `.mel` imports on the live Next.js path.
 
-## Key Entry Points
+## Entry Points
 
 - [`src/components/taskflow/TaskFlowPageClient.tsx`](./src/components/taskflow/TaskFlowPageClient.tsx)
 - [`src/hooks/useTaskFlow.ts`](./src/hooks/useTaskFlow.ts)
@@ -75,7 +90,7 @@ This repo is intentionally opinionated about the integration direction: Manifest
 - [`src/app/api/assistant/route.ts`](./src/app/api/assistant/route.ts)
 - [`src/domain/taskflow.mel`](./src/domain/taskflow.mel)
 
-## Docs
+## Further Reading
 
 - [Architecture](./docs/ARCHITECTURE.md)
 - [UI Contract](./docs/UI-CONTRACT.md)
