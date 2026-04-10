@@ -16,13 +16,18 @@ import {
 import {
   getDateRangeFromType,
 } from '@/lib/date-filter';
+import { getReferenceDate } from '@/lib/taskflow-clock';
 import type { DateFilter, DateFilterField, DateFilterType } from '@/types/taskflow';
 
 interface DateRangePickerProps {
   value?: DateFilter | null;
   onChange?: (filter: DateFilter | null) => void;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   className?: string;
   placeholder?: string;
+  referenceNow?: string | null;
+  compact?: boolean;
 }
 
 const presets = [
@@ -35,16 +40,30 @@ const presets = [
 export function DateRangePicker({
   value,
   onChange,
+  open: openProp,
+  onOpenChange,
   className,
   placeholder = 'Filter by date',
+  referenceNow,
+  compact = false,
 }: DateRangePickerProps) {
-  const [open, setOpen] = React.useState(false);
+  const [uncontrolledOpen, setUncontrolledOpen] = React.useState(false);
   const [selectedField, setSelectedField] = React.useState<DateFilterField>(value?.field ?? 'createdAt');
   const [selectedType, setSelectedType] = React.useState<DateFilterType>(value?.type ?? 'all');
   const [customRange, setCustomRange] = React.useState<DateRange | undefined>(
     value?.type === 'custom' && value.startDate && value.endDate
       ? { from: value.startDate, to: value.endDate }
       : undefined
+  );
+  const open = openProp ?? uncontrolledOpen;
+  const setOpen = React.useCallback(
+    (nextOpen: boolean) => {
+      onOpenChange?.(nextOpen);
+      if (openProp === undefined) {
+        setUncontrolledOpen(nextOpen);
+      }
+    },
+    [onOpenChange, openProp],
   );
 
   const handlePresetSelect = (type: DateFilterType) => {
@@ -54,7 +73,7 @@ export function DateRangePicker({
       return;
     }
 
-    const range = getDateRangeFromType(type);
+    const range = getDateRangeFromType(type, referenceNow);
     if (range) {
       onChange?.({
         field: selectedField,
@@ -120,16 +139,19 @@ export function DateRangePicker({
       <PopoverTrigger asChild>
         <Button
           variant={value ? 'default' : 'outline'}
-          size="sm"
+          size={compact ? 'icon' : 'sm'}
+          aria-label={value ? getDisplayText() : placeholder}
           className={cn(
-            'h-8 gap-2 rounded-md text-sm font-normal',
+            compact
+              ? 'relative h-9 w-9 rounded-md'
+              : 'h-8 gap-2 rounded-md text-sm font-normal',
             value && 'bg-primary text-primary-foreground hover:bg-primary/90',
             className
           )}
         >
           <CalendarIcon className="h-3.5 w-3.5" />
-          <span>{getDisplayText()}</span>
-          {value && (
+          {compact ? <span className="sr-only">{getDisplayText()}</span> : <span>{getDisplayText()}</span>}
+          {!compact && value && (
             <span
               role="button"
               tabIndex={0}
@@ -140,6 +162,9 @@ export function DateRangePicker({
               <X className="h-3.5 w-3.5 opacity-70 hover:opacity-100" />
             </span>
           )}
+          {compact && value ? (
+            <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-primary-foreground/90 ring-2 ring-primary" />
+          ) : null}
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-auto p-0" align="start">
@@ -177,6 +202,16 @@ export function DateRangePicker({
                 {preset.label}
               </Button>
             ))}
+            {value ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="justify-start h-8 text-sm text-muted-foreground"
+                onClick={handleClear}
+              >
+                Clear filter
+              </Button>
+            ) : null}
           </div>
 
           {/* Custom calendar (shown when custom is selected) */}
@@ -187,7 +222,7 @@ export function DateRangePicker({
                 selected={customRange}
                 onSelect={handleCustomRangeSelect}
                 numberOfMonths={1}
-                defaultMonth={customRange?.from ?? new Date()}
+                defaultMonth={customRange?.from ?? getReferenceDate(referenceNow)}
               />
               {customRange?.from && customRange?.to && (
                 <div className="px-2 pb-2">

@@ -10,12 +10,14 @@ import {
   startOfWeek,
 } from "date-fns";
 
+import { getReferenceDate } from "@/lib/taskflow-clock";
 import type { DateFilter, DateFilterType, Task } from "@/types/taskflow";
 
 export function getDateRangeFromType(
   type: DateFilterType,
+  referenceNow?: string | null,
 ): { startDate: Date; endDate: Date } | null {
-  const now = new Date();
+  const now = getReferenceDate(referenceNow);
 
   switch (type) {
     case "today":
@@ -35,6 +37,7 @@ export function getDateRangeFromType(
 export function filterTasksByDate(
   tasks: Task[],
   dateFilter: DateFilter | null,
+  referenceNow?: string | null,
 ): Task[] {
   if (!dateFilter || dateFilter.type === "all") {
     return tasks;
@@ -51,7 +54,7 @@ export function filterTasksByDate(
     startDate = dateFilter.startDate;
     endDate = dateFilter.endDate;
   } else {
-    const range = getDateRangeFromType(dateFilter.type);
+    const range = getDateRangeFromType(dateFilter.type, referenceNow);
     if (!range) {
       return tasks;
     }

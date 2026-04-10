@@ -15,6 +15,23 @@ export interface DateFilter {
   endDate?: Date;
 }
 
+export interface TaskFlowClockStamp {
+  now: string;
+  timezone: string;
+  todayStartAt: string;
+  todayEndAt: string;
+  todayStartTs: number;
+  todayEndTs: number;
+  weekStartAt: string;
+  weekEndAt: string;
+  weekStartTs: number;
+  weekEndTs: number;
+  monthStartAt: string;
+  monthEndAt: string;
+  monthStartTs: number;
+  monthEndTs: number;
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -23,10 +40,21 @@ export interface Task {
   priority: TaskPriority;
   assignee: string | null;
   dueDate: string | null;
+  dueDateTimestamp: number;
   tags: string[];
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
+}
+
+export interface TaskDraft {
+  title: string;
+  description: string;
+  status: TaskStatus;
+  priority: TaskPriority;
+  assignee: string;
+  dueDate: string;
+  tags: string[];
 }
 
 export type AssistantStage = "thinking" | "executing" | "responding" | "done" | "error";
@@ -37,4 +65,19 @@ export interface AssistantMessage {
   content: string;
   tone?: "default" | "muted";
   stage?: AssistantStage;
+}
+
+export type TaskFlowHistoryKind = "genesis" | "seed" | "ui" | "mutation";
+
+export interface TaskFlowHistoryEntry {
+  attemptId: string;
+  worldId: string;
+  branchId: string;
+  branchName: string;
+  actionName: string;
+  summary: string;
+  kind: TaskFlowHistoryKind;
+  createdAt: number;
+  isHead: boolean;
+  isVisible: boolean;
 }

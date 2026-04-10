@@ -1,12 +1,33 @@
 domain TaskFlow {
+  type TaskStatus = "todo" | "in-progress" | "review" | "done"
+  type TaskPriority = "low" | "medium" | "high"
+  type ViewMode = "kanban" | "todo" | "table" | "trash"
+  type ClockStamp = {
+    now: string,
+    timezone: string,
+    todayStartAt: string,
+    todayEndAt: string,
+    todayStartTs: number,
+    todayEndTs: number,
+    weekStartAt: string,
+    weekEndAt: string,
+    weekStartTs: number,
+    weekEndTs: number,
+    monthStartAt: string,
+    monthEndAt: string,
+    monthStartTs: number,
+    monthEndTs: number
+  }
+
   type Task = {
     id: string,
     title: string,
     description: string | null,
-    status: "todo" | "in-progress" | "review" | "done",
-    priority: "low" | "medium" | "high",
+    status: TaskStatus,
+    priority: TaskPriority,
     assignee: string | null,
     dueDate: string | null,
+    dueDateTimestamp: number,
     tags: Array<string>,
     createdAt: string,
     updatedAt: string,
@@ -16,136 +37,133 @@ domain TaskFlow {
   state {
     tasks: Array<Task> = []
     selectedTaskId: string | null = null
-    viewMode: "kanban" | "todo" | "table" | "trash" = "kanban"
-    assistantOpen: boolean = true
+    viewMode: ViewMode = "kanban"
+    assistantOpen: boolean = false
+    clock: ClockStamp | null = null
   }
 
-  // --- Computed: filtering ---
   computed activeTasks = filter(tasks, isNull($item.deletedAt))
   computed deletedTasks = filter(tasks, isNotNull($item.deletedAt))
-
-  // --- Computed: status groups (reference activeTasks) ---
   computed todoTasks = filter(activeTasks, eq($item.status, "todo"))
   computed inProgressTasks = filter(activeTasks, eq($item.status, "in-progress"))
   computed reviewTasks = filter(activeTasks, eq($item.status, "review"))
   computed doneTasks = filter(activeTasks, eq($item.status, "done"))
-
-  // --- Computed: counts ---
+  computed schedulableTasks = filter(activeTasks, and(gt($item.dueDateTimestamp, 0), neq($item.status, "done")))
+  computed dueTodayTasks = cond(
+    isNull(clock),
+    [],
+    filter(schedulableTasks, and(gte($item.dueDateTimestamp, clock.todayStartTs), lte($item.dueDateTimestamp, clock.todayEndTs)))
+  )
+  computed overdueTasks = cond(
+    isNull(clock),
+    [],
+    filter(schedulableTasks, lt($item.dueDateTimestamp, clock.todayStartTs))
+  )
+  computed selectedTask = findById(tasks, selectedTaskId)
   computed totalCount = len(activeTasks)
   computed todoCount = len(todoTasks)
   computed inProgressCount = len(inProgressTasks)
   computed reviewCount = len(reviewTasks)
   computed doneCount = len(doneTasks)
   computed deletedCount = len(deletedTasks)
+  computed dueTodayCount = len(dueTodayTasks)
+  computed overdueCount = len(overdueTasks)
 
-  // --- Actions ---
-  action createTask(task: Task) {
+  action createTask(task: Task, stamp: ClockStamp) {
     onceIntent {
       patch tasks = append(tasks, task)
+      patch clock = stamp
     }
   }
 
-  action updateTask(id: string, title: string | null, description: string | null,
-                    status: string | null, priority: string | null,
-                    assignee: string | null, dueDate: string | null,
-                    tags: Array<string> | null, updatedAt: string) {
+  action updateTask(task: Task, stamp: ClockStamp)
+    dispatchable when existsById(tasks, task.id) {
     onceIntent {
-      patch tasks = map(tasks,
-        cond(eq($item.id, id),
-          {
-            id: $item.id,
-            title: coalesce(title, $item.title),
-            description: cond(isNotNull(description), description, $item.description),
-            status: coalesce(status, $item.status),
-            priority: coalesce(priority, $item.priority),
-            assignee: cond(isNotNull(assignee), assignee, $item.assignee),
-            dueDate: cond(isNotNull(dueDate), dueDate, $item.dueDate),
-            tags: coalesce(tags, $item.tags),
-            createdAt: $item.createdAt,
-            updatedAt: updatedAt,
-            deletedAt: $item.deletedAt
-          },
-          $item
-        )
-      )
+      patch tasks = updateById(tasks, task.id, {
+        title: task.title,
+        description: task.description,
+        status: task.status,
+        priority: task.priority,
+        assignee: task.assignee,
+        dueDate: task.dueDate,
+        dueDateTimestamp: task.dueDateTimestamp,
+        tags: task.tags,
+        createdAt: task.createdAt,
+        updatedAt: task.updatedAt,
+        deletedAt: task.deletedAt
+      })
+      patch clock = stamp
     }
   }
 
-  action moveTask(taskId: string, newStatus: "todo" | "in-progress" | "review" | "done") {
+  action moveTask(taskId: string, newStatus: TaskStatus, stamp: ClockStamp)
+    dispatchable when existsById(tasks, taskId) {
     onceIntent {
-      patch tasks = map(tasks,
-        cond(eq($item.id, taskId),
-          {
-            id: $item.id, title: $item.title, description: $item.description,
-            status: newStatus, priority: $item.priority, assignee: $item.assignee,
-            dueDate: $item.dueDate, tags: $item.tags, createdAt: $item.createdAt,
-            updatedAt: $item.updatedAt, deletedAt: $item.deletedAt
-          },
-          $item
-        )
-      )
+      patch tasks = updateById(tasks, taskId, {
+        status: newStatus,
+        updatedAt: stamp.now
+      })
+      patch clock = stamp
     }
   }
 
-  action softDeleteTask(id: string, timestamp: string) {
+  action softDeleteTask(id: string, stamp: ClockStamp)
+    dispatchable when existsById(tasks, id) {
     onceIntent {
-      patch tasks = map(tasks,
-        cond(eq($item.id, id),
-          {
-            id: $item.id, title: $item.title, description: $item.description,
-            status: $item.status, priority: $item.priority, assignee: $item.assignee,
-            dueDate: $item.dueDate, tags: $item.tags, createdAt: $item.createdAt,
-            updatedAt: $item.updatedAt, deletedAt: timestamp
-          },
-          $item
-        )
-      )
+      patch tasks = updateById(tasks, id, {
+        deletedAt: stamp.now,
+        updatedAt: stamp.now
+      })
+      patch clock = stamp
     }
   }
 
-  action restoreTask(id: string) {
+  action restoreTask(id: string, stamp: ClockStamp)
+    dispatchable when existsById(tasks, id) {
     onceIntent {
-      patch tasks = map(tasks,
-        cond(eq($item.id, id),
-          {
-            id: $item.id, title: $item.title, description: $item.description,
-            status: $item.status, priority: $item.priority, assignee: $item.assignee,
-            dueDate: $item.dueDate, tags: $item.tags, createdAt: $item.createdAt,
-            updatedAt: $item.updatedAt, deletedAt: null
-          },
-          $item
-        )
-      )
+      patch tasks = updateById(tasks, id, {
+        deletedAt: null,
+        updatedAt: stamp.now
+      })
+      patch clock = stamp
     }
   }
 
-  action permanentlyDeleteTask(id: string) {
+  action permanentlyDeleteTask(id: string, stamp: ClockStamp)
+    dispatchable when existsById(tasks, id) {
     onceIntent {
-      patch tasks = filter(tasks, neq($item.id, id))
+      patch tasks = removeById(tasks, id)
+      patch clock = stamp
     }
   }
 
-  action emptyTrash() {
+  action emptyTrash(stamp: ClockStamp)
+    available when gt(deletedCount, 0) {
     onceIntent {
       patch tasks = filter(tasks, isNull($item.deletedAt))
+      patch clock = stamp
     }
   }
 
-  action selectTask(taskId: string | null) {
+  action selectTask(taskId: string | null, stamp: ClockStamp)
+    dispatchable when or(isNull(taskId), existsById(tasks, taskId)) {
     onceIntent {
       patch selectedTaskId = taskId
+      patch clock = stamp
     }
   }
 
-  action changeView(mode: "kanban" | "todo" | "table" | "trash") {
+  action changeView(mode: ViewMode, stamp: ClockStamp) {
     onceIntent {
       patch viewMode = mode
+      patch clock = stamp
     }
   }
 
-  action toggleAssistant(open: boolean) {
+  action toggleAssistant(open: boolean, stamp: ClockStamp) {
     onceIntent {
       patch assistantOpen = open
+      patch clock = stamp
     }
   }
 }

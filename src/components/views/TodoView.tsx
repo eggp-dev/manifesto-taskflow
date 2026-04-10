@@ -6,12 +6,14 @@ import type { Task } from '@/types/taskflow';
 interface TodoViewProps {
   tasks: Task[];
   selectedTaskId: string | null;
+  hoveredTaskId?: string | null;
   onSelectTask: (taskId: string) => void;
 }
 
 export function TodoView({
   tasks,
   selectedTaskId,
+  hoveredTaskId = null,
   onSelectTask,
 }: TodoViewProps) {
   // Sort tasks: incomplete first, then by priority
@@ -37,6 +39,7 @@ export function TodoView({
             key={task.id}
             task={task}
             isSelected={selectedTaskId === task.id}
+            isSemanticHovered={hoveredTaskId === task.id}
             showCheckbox
             onSelect={() => onSelectTask(task.id)}
           />
