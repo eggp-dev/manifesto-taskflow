@@ -12,12 +12,16 @@ import {
 interface AssistantInputProps {
   onSubmit: (message: string) => void;
   isLoading: boolean;
+  disabled?: boolean;
+  disabledMessage?: string;
   placeholder?: string;
 }
 
 export function AssistantInput({
   onSubmit,
   isLoading,
+  disabled = false,
+  disabledMessage,
   placeholder = 'Message TaskFlow...',
 }: AssistantInputProps) {
   const [input, setInput] = useState('');
@@ -36,7 +40,7 @@ export function AssistantInput({
   }, [isLoading]);
 
   const handleSubmit = () => {
-    if (!input.trim() || isLoading) return;
+    if (!input.trim() || isLoading || disabled) return;
     onSubmit(input.trim());
     setInput('');
   };
@@ -48,7 +52,7 @@ export function AssistantInput({
         onValueChange={setInput}
         onSubmit={handleSubmit}
         isLoading={isLoading}
-        disabled={isLoading}
+        disabled={isLoading || disabled}
         maxHeight={200}
         inputRef={inputRef}
         className="relative flex items-end gap-2 rounded-2xl border-border/50 bg-muted/50 p-1.5 pl-3 mb-3"
@@ -61,7 +65,7 @@ export function AssistantInput({
           <Button
             type="button"
             size="icon"
-            disabled={isLoading || !input.trim()}
+            disabled={isLoading || disabled || !input.trim()}
             onClick={handleSubmit}
             className="h-10 w-10 sm:h-9 sm:w-9 shrink-0 rounded-full"
           >
@@ -73,6 +77,9 @@ export function AssistantInput({
           </Button>
         </PromptInputActions>
       </PromptInput>
+      {disabledMessage ? (
+        <p className="px-1 text-xs text-muted-foreground">{disabledMessage}</p>
+      ) : null}
     </div>
   );
 }

@@ -10,6 +10,7 @@ interface AssistantPanelProps {
   messages: AssistantMessage[];
   onSubmit: (message: string) => void;
   isLoading?: boolean;
+  disabled?: boolean;
 }
 
 export function AssistantPanel({
@@ -17,6 +18,7 @@ export function AssistantPanel({
   messages,
   onSubmit,
   isLoading = false,
+  disabled = false,
 }: AssistantPanelProps) {
   return (
     <div className="flex h-full flex-col bg-background">
@@ -25,7 +27,17 @@ export function AssistantPanel({
       <AssistantInput
         onSubmit={onSubmit}
         isLoading={isLoading}
-        placeholder="Ask the assistant to manage tasks..."
+        disabled={disabled}
+        disabledMessage={
+          disabled
+            ? 'Assistant execution is disabled in this preserved shell. Reconnect it during the SDK rebuild.'
+            : undefined
+        }
+        placeholder={
+          disabled
+            ? 'Assistant is disabled in this UI shell'
+            : 'Ask the assistant to manage tasks...'
+        }
       />
     </div>
   );

@@ -1,41 +1,23 @@
 # TaskFlow UI Contract
 
-This document captures what the preserved TaskFlow UI needs from the future Manifesto domain.
+This document defines the preserved shell boundary for the next SDK `3.8.x` rebuild.
 
-## Core Data Shape
+## Core Types
 
-```ts
-type TaskStatus = 'todo' | 'in-progress' | 'review' | 'done';
-type TaskPriority = 'low' | 'medium' | 'high';
-type ViewMode = 'todo' | 'kanban' | 'table' | 'trash';
+These app-facing types remain the source of truth:
 
-interface Task {
-  id: string;
-  title: string;
-  description: string | null;
-  status: TaskStatus;
-  priority: TaskPriority;
-  assignee: string | null;
-  dueDate: string | null;
-  tags: string[];
-  createdAt: string;
-  updatedAt: string;
-  deletedAt: string | null;
-}
+- `TaskStatus`
+- `TaskPriority`
+- `ViewMode`
+- `DateFilter`
+- `Task`
+- `AssistantMessage`
 
-interface DateFilter {
-  field: 'dueDate' | 'createdAt';
-  type: 'all' | 'today' | 'week' | 'month' | 'custom';
-  startDate?: Date;
-  endDate?: Date;
-}
-```
+They live in [`src/types/taskflow.ts`](../src/types/taskflow.ts).
 
-Rule:
+## Shell State
 
-- For MEL-facing state, prefer `null` over `undefined` for all optional task fields.
-
-## Required State
+The active controller is local-only and fixture-backed. The base state is:
 
 - `tasks: Task[]`
 - `selectedTaskId: string | null`
@@ -43,12 +25,9 @@ Rule:
 - `dateFilter: DateFilter | null`
 - `assistantOpen: boolean`
 
-Phase 3 only:
+Derived state is computed locally from that base:
 
-- assistant message history / chat history
-
-## Required Computed Values
-
+- `selectedTask`
 - `activeTasks`
 - `deletedTasks`
 - `todoTasks`
@@ -60,77 +39,57 @@ Phase 3 only:
 - `inProgressCount`
 - `reviewCount`
 - `doneCount`
-- `selectedTask`
+- `deletedCount`
 
-## Required Actions
+Implementation seam:
 
-- `createTask(task)`
-- `updateTask(id, updates)`
+- [`src/lib/taskflow-shell-state.ts`](../src/lib/taskflow-shell-state.ts)
+- [`src/hooks/useTaskFlow.ts`](../src/hooks/useTaskFlow.ts)
+
+## Supported Actions
+
+The shell action surface is intentionally narrow:
+
+- `selectTask(id | null)`
+- `changeView(mode)`
+- `setDateFilter(filter | null)`
 - `moveTask(taskId, newStatus)`
 - `softDeleteTask(id)`
 - `restoreTask(id)`
 - `permanentlyDeleteTask(id)`
 - `emptyTrash()`
-- `selectTask(id | null)`
-- `changeView(mode)`
-- `setDateFilter(filter | null)`
 - `toggleAssistant(open)`
 
-## Component Mapping
+There is no `dispatch`, runtime instance, intent layer, persistence layer, or network API in the active app path.
 
-### `src/app/page.tsx`
+## Component Expectations
 
-Needs:
+[`src/app/page.tsx`](../src/app/page.tsx) composes the preserved shell and expects:
 
-- `viewMode`
-- `selectedTaskId`
-- `assistantOpen`
-- `dateFilter`
-- counts and filtered task lists
+- local shell state from `useTaskFlow`
+- date-filtered active task lists
+- responsive detail and assistant panels
 
-### `src/components/views/KanbanView.tsx`
+Surviving view/sidebar/assistant components remain props-driven:
 
-Needs:
+- Kanban/Todo/Table render active tasks and selection state
+- Trash renders deleted tasks and destructive actions
+- Task detail renders the selected task
+- Assistant renders static disabled-shell messaging and does not execute requests
 
-- active task list
-- selected task id
-- select callback
-- move callback
+## Explicit Non-Goals
 
-### `src/components/views/TodoView.tsx`
+- No SDK activation
+- No intent parsing or lowering
+- No `/api/agent` routes
+- No legacy runtime restore for convenience
 
-Needs:
+## Domain Source
 
-- active task list
-- selected task id
-- select callback
+The shell still does not execute a Manifesto runtime, but the domain source is present and wired into Next for compile/codegen:
 
-### `src/components/views/TableView.tsx`
+- [`src/domain/taskflow.mel`](../src/domain/taskflow.mel)
+- [`src/domain/taskflow.schema.ts`](../src/domain/taskflow.schema.ts)
+- [`src/domain/taskflow.domain.ts`](../src/domain/taskflow.domain.ts)
 
-Needs:
-
-- active task list
-- selected task id
-- select callback
-
-### `src/components/views/TrashView.tsx`
-
-Needs:
-
-- deleted task list
-- restore callback
-- permanently delete callback
-- empty trash callback
-
-### `src/components/sidebar/TaskDetailPanel.tsx`
-
-Needs:
-
-- selected task
-- close callback
-- update callback
-- delete callback
-
-### `src/components/assistant/*`
-
-Phase 3 only. Preserve the current visual structure, but reconnect the data flow to Manifesto intents instead of any custom agent runtime.
+That seam exists so the app uses a real `.mel` import path and webpack codegen stays current while the runtime rebuild is pending.

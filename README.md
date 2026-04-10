@@ -1,91 +1,50 @@
-# TaskFlow — Manifesto SDK Demo
+# TaskFlow UI Shell
 
-A task management app rebuilt on `@manifesto-ai/sdk`, demonstrating the Intent-Native Deterministic Runtime architecture.
+TaskFlow is currently a preserved UI shell on top of the SDK `3.8.0` dependency baseline.
 
-## Architecture
+The old `2.0.0`-era Manifesto runtime, MEL domain, agent routes, and intent plumbing have been hard-cut from the app. This repo is now the visual/reference surface for the next clean rebuild, not a partial runtime migration.
 
-```
-User Input (UI)                  User Input (Natural Language)
-      |                                    |
-      v                                    v
-  dispatch()                     LLM Intent Compiler (Claude API)
-      |                                    |
-      v                                    v
-                  Manifesto Runtime
-                  (deterministic)
-                        |
-                        v
-                    Snapshot
-                   (immutable)
-                        |
-                        v
-                    React UI
-```
+The domain source is now wired back into the real Next.js module graph through a `.mel` import, and webpack codegen emits [`src/domain/taskflow.domain.ts`](./src/domain/taskflow.domain.ts) from [`src/domain/taskflow.mel`](./src/domain/taskflow.mel) during build.
 
-- **Core computes. Host executes. UI reads.**
-- **Snapshot is the sole source of truth.** All state lives in Manifesto snapshot.
-- **No LLM in the execution path.** LLM compiles natural language to Intent JSON. Runtime executes.
-- **AI tasks and UI tasks share the same snapshot.** One `dispatch()` path for both.
+## Current State
 
-## Stack
+- Local fixture data only
+- No Manifesto runtime activation in the app path
+- No persistence
+- No networked assistant or `/api/agent` execution path
+- The app imports [`src/domain/taskflow.mel`](./src/domain/taskflow.mel) through [`src/domain/taskflow.schema.ts`](./src/domain/taskflow.schema.ts) so compiler/codegen run on the real Next path
+- `pnpm dev` and `pnpm build` use webpack so the installed Manifesto compiler/codegen integration can process `.mel`
+- `manifesto.config.ts` and the `3.8.0` package baseline stay in place for the future rebuild
 
-- **Runtime**: `@manifesto-ai/sdk` + `@manifesto-ai/compiler` (workspace packages)
-- **Domain**: MEL (Manifesto Expression Language) — `src/domain/taskflow.mel`
-- **UI**: Next.js 16, React 19, Tailwind CSS 4, Radix UI, Framer Motion
-- **AI**: Anthropic Claude API via `@anthropic-ai/sdk`
+## Preserved Interactions
 
-## Setup
+- View switching between todo, kanban, table, and trash
+- Task selection and detail panel open/close
+- Kanban status moves
+- Soft delete, restore, permanent delete, and empty trash
+- Date filtering
+- Assistant panel open/close with disabled shell messaging
 
-```bash
-# Install dependencies (from monorepo root)
-pnpm install
+## Shell Boundary
 
-# Start development server
-pnpm -C apps/taskflow dev
-```
+The active controller surface is local-only:
 
-### AI Assistant (Optional)
+- [`src/hooks/useTaskFlow.ts`](./src/hooks/useTaskFlow.ts)
+- [`src/lib/taskflow-shell-state.ts`](./src/lib/taskflow-shell-state.ts)
+- [`docs/UI-CONTRACT.md`](./docs/UI-CONTRACT.md)
 
-To enable the AI assistant, set your Anthropic API key:
-
-```bash
-export ANTHROPIC_API_KEY=sk-ant-...
-```
-
-Without the key, the assistant panel will show a configuration message. All other features (task CRUD, views, drag-and-drop) work without it.
+The surviving app-facing types remain in [`src/types/taskflow.ts`](./src/types/taskflow.ts).
 
 ## Commands
 
 ```bash
-pnpm -C apps/taskflow dev        # Start dev server
-pnpm -C apps/taskflow typecheck  # Run TypeScript checks
-pnpm -C apps/taskflow lint       # Run ESLint
-pnpm -C apps/taskflow test       # Run Vitest tests (9 scenarios)
+pnpm dev
+pnpm typecheck
+pnpm lint
+pnpm test
+pnpm build
 ```
 
-## Domain Model
+## Rebuild Rule
 
-Defined in `src/domain/taskflow.mel`:
-
-- **State**: `tasks[]`, `selectedTaskId`, `viewMode`, `assistantOpen`
-- **Computed** (12): `activeTasks`, `deletedTasks`, status-grouped tasks, counts
-- **Actions** (10): `createTask`, `updateTask`, `moveTask`, `softDeleteTask`, `restoreTask`, `permanentlyDeleteTask`, `emptyTrash`, `selectTask`, `changeView`, `toggleAssistant`
-
-## Key Files
-
-| File | Role |
-|------|------|
-| `src/domain/taskflow.mel` | MEL domain definition (canonical) |
-| `src/domain/taskflow-schema.ts` | MEL as TS string (Turbopack workaround, F-005) |
-| `src/manifesto/instance.ts` | SDK instance + `dispatchAsync` helper |
-| `src/hooks/useTaskFlow.ts` | React hook: snapshot → state + actions |
-| `src/app/api/agent/route.ts` | LLM Intent Compiler endpoint |
-| `src/types/intent.ts` | Intent type definitions |
-| `src/app/page.tsx` | Main page: intent execution + UI wiring |
-
-## Documentation
-
-- [FRICTION.md](./FRICTION.md) — Implementation friction log (12 issues, prioritized)
-- [docs/SDK-REBUILD-WORKING.md](./docs/SDK-REBUILD-WORKING.md) — Phase execution checklist
-- [docs/UI-CONTRACT.md](./docs/UI-CONTRACT.md) — State/computed/action contract
-- [docs/ADR.md](./docs/ADR.md) — LLM-as-Intent-Compiler architecture decision
+Do not incrementally revive the deleted runtime files. The next SDK integration should start from this shell boundary and reconnect the app to the SDK `3.8.x` surface intentionally.

@@ -78,6 +78,6 @@ export const ASSISTANT_SHELL_MESSAGES: AssistantMessage[] = [
     role: "assistant",
     tone: "muted",
     content:
-      "Assistant automation is disabled in this shell. Reconnect this panel during the SDK rebuild.",
+      "Assistant execution is disabled in this preserved shell. Keep the UI, but reconnect this panel after the fresh SDK 3.8 rebuild starts.",
   },
 ];

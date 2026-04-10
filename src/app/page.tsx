@@ -1,6 +1,5 @@
 'use client';
 
-import { useState, useCallback } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Calendar, MessageSquare } from 'lucide-react';
 import { AssistantPanel } from '@/components/assistant';
@@ -23,9 +22,9 @@ import { TodoView } from '@/components/views/TodoView';
 import { TrashView } from '@/components/views/TrashView';
 import { useIsDesktop, useIsMobile } from '@/hooks/useMediaQuery';
 import { useTaskFlow } from '@/hooks/useTaskFlow';
+import { ASSISTANT_SHELL_MESSAGES } from '@/lib/taskflow-fixtures';
 import { filterTasksByDate } from '@/lib/date-filter';
-import type { AgentRequest, AgentResponse, ConversationTurn, IntentResult, RespondRequest, RespondResponse } from '@/types/intent';
-import type { AssistantMessage, AssistantStage, DateFilter, Task, ViewMode } from '@/types/taskflow';
+import type { DateFilter, ViewMode } from '@/types/taskflow';
 
 function TasksHeader({
   activeCount,
@@ -54,7 +53,9 @@ function TasksHeader({
         <div className="flex items-center gap-2 sm:gap-4">
           <div>
             <h1 className="text-base font-semibold sm:text-lg">TaskFlow</h1>
-            <p className="text-xs text-muted-foreground">Powered by Manifesto SDK</p>
+            <p className="text-xs text-muted-foreground">
+              Preserved UI shell on the SDK 3.8 baseline
+            </p>
           </div>
           <div className="hidden items-center gap-2 text-sm text-muted-foreground lg:flex">
             <Badge variant="secondary" className="font-normal">
@@ -122,285 +123,20 @@ function AssistantToggle({
   );
 }
 
-/**
- * Resolve a task title from an intent to an actual task ID.
- * Uses case-insensitive substring matching.
- */
-function resolveTaskId(taskTitle: string, tasks: Task[]): string | null {
-  const lower = taskTitle.toLowerCase();
-  const match = tasks.find((t) => t.title.toLowerCase().includes(lower));
-  return match?.id ?? null;
-}
-
-/**
- * Generate a human-readable description of what the intent did.
- */
-function describeExecution(intent: IntentResult, resolved: boolean): string {
-  if (!resolved && 'taskTitle' in intent && intent.taskTitle) {
-    return `Could not find a task matching "${intent.taskTitle}".`;
-  }
-  switch (intent.kind) {
-    case 'createTask':
-      return `Created task "${intent.task.title}".`;
-    case 'updateTask':
-      return `Updated task "${intent.taskTitle}".`;
-    case 'moveTask':
-      return `Moved task "${intent.taskTitle}" to ${intent.newStatus}.`;
-    case 'deleteTask':
-    case 'softDeleteTask':
-      return `Deleted task "${intent.taskTitle}".`;
-    case 'permanentlyDeleteTask':
-      return `Permanently deleted task "${intent.taskTitle}".`;
-    case 'restoreTask':
-      return `Restored task "${intent.taskTitle}".`;
-    case 'emptyTrash':
-      return 'Emptied the trash.';
-    case 'selectTask':
-      return intent.taskTitle
-        ? `Selected task "${intent.taskTitle}".`
-        : 'Deselected task.';
-    case 'changeView':
-      return `Switched to ${intent.viewMode} view.`;
-    case 'query':
-      return '';
-  }
-}
-
 export default function Home() {
-  const { state, ready, actions, dispatch } = useTaskFlow();
-  const [dateFilter, setDateFilter] = useState<DateFilter | null>(null);
-  const [assistantMessages, setAssistantMessages] = useState<AssistantMessage[]>([]);
-  const [assistantLoading, setAssistantLoading] = useState(false);
+  const { state, actions } = useTaskFlow();
 
   const isMobile = useIsMobile();
   const isDesktop = useIsDesktop();
 
-  const executeIntent = useCallback(
-    (intent: IntentResult, tasks: Task[]): { executed: boolean; message: string } => {
-      switch (intent.kind) {
-        case 'createTask': {
-          const now = new Date().toISOString();
-          const task: Task = {
-            id: crypto.randomUUID(),
-            title: intent.task.title,
-            description: intent.task.description ?? null,
-            status: intent.task.status ?? 'todo',
-            priority: intent.task.priority ?? 'medium',
-            assignee: intent.task.assignee ?? null,
-            dueDate: intent.task.dueDate ?? null,
-            tags: intent.task.tags ?? [],
-            createdAt: now,
-            updatedAt: now,
-            deletedAt: null,
-          };
-          dispatch('createTask', { task });
-          return { executed: true, message: describeExecution(intent, true) };
-        }
-        case 'updateTask': {
-          const id = resolveTaskId(intent.taskTitle, tasks);
-          if (!id) return { executed: false, message: describeExecution(intent, false) };
-          dispatch('updateTask', {
-            id,
-            title: intent.fields.title ?? null,
-            description: intent.fields.description ?? null,
-            status: intent.fields.status ?? null,
-            priority: intent.fields.priority ?? null,
-            assignee: intent.fields.assignee ?? null,
-            dueDate: intent.fields.dueDate ?? null,
-            tags: intent.fields.tags ?? null,
-            updatedAt: new Date().toISOString(),
-          });
-          return { executed: true, message: describeExecution(intent, true) };
-        }
-        case 'moveTask': {
-          const id = resolveTaskId(intent.taskTitle, tasks);
-          if (!id) return { executed: false, message: describeExecution(intent, false) };
-          dispatch('moveTask', { taskId: id, newStatus: intent.newStatus });
-          return { executed: true, message: describeExecution(intent, true) };
-        }
-        case 'deleteTask':
-        case 'softDeleteTask': {
-          const id = resolveTaskId(intent.taskTitle, tasks);
-          if (!id) return { executed: false, message: describeExecution(intent, false) };
-          dispatch('softDeleteTask', { id, timestamp: new Date().toISOString() });
-          return { executed: true, message: describeExecution(intent, true) };
-        }
-        case 'permanentlyDeleteTask': {
-          const id = resolveTaskId(intent.taskTitle, tasks);
-          if (!id) return { executed: false, message: describeExecution(intent, false) };
-          dispatch('permanentlyDeleteTask', { id });
-          return { executed: true, message: describeExecution(intent, true) };
-        }
-        case 'restoreTask': {
-          const id = resolveTaskId(intent.taskTitle, tasks);
-          if (!id) return { executed: false, message: describeExecution(intent, false) };
-          dispatch('restoreTask', { id });
-          return { executed: true, message: describeExecution(intent, true) };
-        }
-        case 'emptyTrash': {
-          dispatch('emptyTrash', {});
-          return { executed: true, message: describeExecution(intent, true) };
-        }
-        case 'selectTask': {
-          if (!intent.taskTitle) {
-            dispatch('selectTask', { taskId: null });
-            return { executed: true, message: describeExecution(intent, true) };
-          }
-          const id = resolveTaskId(intent.taskTitle, tasks);
-          if (!id) return { executed: false, message: describeExecution(intent, false) };
-          dispatch('selectTask', { taskId: id });
-          return { executed: true, message: describeExecution(intent, true) };
-        }
-        case 'changeView': {
-          dispatch('changeView', { mode: intent.viewMode });
-          return { executed: true, message: describeExecution(intent, true) };
-        }
-        case 'query': {
-          return { executed: false, message: '' };
-        }
-      }
-    },
-    [dispatch],
-  );
-
-  const handleAssistantSubmit = useCallback(
-    async (message: string) => {
-      if (!state) return;
-
-      const assistantId = `assistant-${Date.now()}`;
-
-      // Add user message
-      setAssistantMessages((current) => [
-        ...current,
-        { id: `user-${Date.now()}`, role: 'user', content: message },
-      ]);
-      setAssistantLoading(true);
-
-      const updateStage = (stage: AssistantStage, content?: string, tone?: AssistantMessage['tone']) => {
-        setAssistantMessages((current) => {
-          const existing = current.find((m) => m.id === assistantId);
-          if (existing) {
-            return current.map((m) =>
-              m.id === assistantId
-                ? { ...m, stage, ...(content !== undefined && { content }), ...(tone && { tone }) }
-                : m,
-            );
-          }
-          return [
-            ...current,
-            { id: assistantId, role: 'assistant' as const, content: content ?? '', stage, ...(tone && { tone }) },
-          ];
-        });
-      };
-
-      try {
-        // Stage 1: Thinking — 1st LLM parses intent
-        updateStage('thinking');
-
-        // Extract conversation history for reference resolution
-        const history: ConversationTurn[] = assistantMessages
-          .filter((m) => m.content && (m.stage === 'done' || m.stage === undefined || m.role === 'user'))
-          .slice(-10)
-          .map((m) => ({ role: m.role, content: m.content }));
-
-        const reqBody: AgentRequest = {
-          message,
-          tasks: state.tasks.map((t) => ({
-            id: t.id,
-            title: t.title,
-            status: t.status,
-            priority: t.priority,
-            assignee: t.assignee,
-            dueDate: t.dueDate,
-            tags: t.tags,
-            deletedAt: t.deletedAt,
-          })),
-          viewMode: state.viewMode,
-          history,
-        };
-
-        const res = await fetch('/api/agent', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(reqBody),
-        });
-
-        const data: AgentResponse = await res.json();
-
-        // Inquiry: agent needs more info from user
-        if (data.inquiry) {
-          const inquiryText = data.inquiry.candidates
-            ? `${data.inquiry.question}\n${data.inquiry.candidates.map((c, i) => `${i + 1}) ${c}`).join('\n')}`
-            : data.inquiry.question;
-          updateStage('done', inquiryText);
-          return;
-        }
-
-        if (!res.ok || !data.intent) {
-          updateStage('error', data.message || 'Sorry, I could not understand that request.', 'muted');
-          return;
-        }
-
-        const intent = data.intent;
-
-        // For query intents, show the LLM's message directly
-        if (intent.kind === 'query') {
-          updateStage('done', data.message || `Let me look at that: ${intent.question}`);
-          return;
-        }
-
-        // Stage 2: Executing — dispatch to Manifesto runtime
-        updateStage('executing');
-        const result = executeIntent(intent, state.tasks);
-
-        // Stage 3: Responding — 2nd LLM generates natural language response
-        updateStage('responding');
-
-        const respondReqBody: RespondRequest = {
-          userMessage: message,
-          intent,
-          executionResult: {
-            executed: result.executed,
-            description: result.message,
-          },
-        };
-
-        const respondRes = await fetch('/api/agent/respond', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(respondReqBody),
-        });
-
-        let responseMessage = result.message;
-        if (respondRes.ok) {
-          const respondData: RespondResponse = await respondRes.json();
-          responseMessage = respondData.message;
-        }
-
-        updateStage('done', responseMessage, result.executed ? 'default' : 'muted');
-      } catch {
-        updateStage('error', 'Failed to reach the assistant. Check your connection and API key.', 'muted');
-      } finally {
-        setAssistantLoading(false);
-      }
-    },
-    [state, executeIntent],
-  );
-
-  if (!ready || !state) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-background">
-        <p className="text-sm text-muted-foreground">Loading...</p>
-      </div>
-    );
-  }
-
   const {
     activeTasks,
     deletedTasks,
+    selectedTask,
     selectedTaskId,
     viewMode,
     assistantOpen,
+    dateFilter,
     totalCount,
     inProgressCount,
     doneCount,
@@ -408,7 +144,6 @@ export default function Home() {
   } = state;
 
   const filteredActiveTasks = filterTasksByDate(activeTasks, dateFilter);
-  const selectedTask = state.tasks?.find((t) => t.id === selectedTaskId) ?? null;
 
   return (
     <div className="flex h-screen bg-background">
@@ -467,7 +202,7 @@ export default function Home() {
           dateFilter={dateFilter}
           deletedCount={deletedCount}
           viewMode={viewMode}
-          onDateFilterChange={setDateFilter}
+          onDateFilterChange={actions.setDateFilter}
           onViewModeChange={actions.changeView}
         />
 
@@ -484,7 +219,7 @@ export default function Home() {
               <KanbanView
                 tasks={filteredActiveTasks}
                 selectedTaskId={selectedTaskId}
-                onSelectTask={actions.selectTask}
+                onSelectTask={(taskId) => actions.selectTask(taskId)}
                 onMoveTask={actions.moveTask}
               />
             </motion.main>
@@ -504,7 +239,7 @@ export default function Home() {
                   <TodoView
                     tasks={filteredActiveTasks}
                     selectedTaskId={selectedTaskId}
-                    onSelectTask={actions.selectTask}
+                    onSelectTask={(taskId) => actions.selectTask(taskId)}
                   />
                 </main>
               </ScrollArea>
@@ -525,7 +260,7 @@ export default function Home() {
                   <TableView
                     tasks={filteredActiveTasks}
                     selectedTaskId={selectedTaskId}
-                    onSelectTask={actions.selectTask}
+                    onSelectTask={(taskId) => actions.selectTask(taskId)}
                   />
                 </main>
               </ScrollArea>
@@ -568,10 +303,10 @@ export default function Home() {
             >
               <div className="h-full w-[360px] overflow-hidden">
                 <AssistantPanel
+                  disabled
                   onClose={() => actions.toggleAssistant(false)}
-                  messages={assistantMessages}
-                  onSubmit={handleAssistantSubmit}
-                  isLoading={assistantLoading}
+                  messages={ASSISTANT_SHELL_MESSAGES}
+                  onSubmit={() => {}}
                 />
               </div>
             </motion.aside>
@@ -586,13 +321,13 @@ export default function Home() {
           >
             <span className="sr-only">
               <SheetTitle>Assistant</SheetTitle>
-              <SheetDescription>AI assistant panel.</SheetDescription>
+              <SheetDescription>UI shell assistant panel.</SheetDescription>
             </span>
             <AssistantPanel
+              disabled
               onClose={() => actions.toggleAssistant(false)}
-              messages={assistantMessages}
-              onSubmit={handleAssistantSubmit}
-              isLoading={assistantLoading}
+              messages={ASSISTANT_SHELL_MESSAGES}
+              onSubmit={() => {}}
             />
           </SheetContent>
         </Sheet>
