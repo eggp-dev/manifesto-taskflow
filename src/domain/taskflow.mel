@@ -44,21 +44,20 @@ domain TaskFlow {
     }
   }
 
-  action updateTask(id: string, title: string | null, description: string | null,
-                    status: TaskStatus | null, priority: TaskPriority | null,
-                    assignee: string | null, dueDate: string | null,
-                    tags: Array<string> | null, updatedAt: string)
-    dispatchable when existsById(tasks, id) {
+  action updateTask(task: Task)
+    dispatchable when existsById(tasks, task.id) {
     onceIntent {
-      patch tasks = updateById(tasks, id, {
-        title: coalesce(title, findById(tasks, id).title),
-        description: coalesce(description, findById(tasks, id).description),
-        status: coalesce(status, findById(tasks, id).status),
-        priority: coalesce(priority, findById(tasks, id).priority),
-        assignee: coalesce(assignee, findById(tasks, id).assignee),
-        dueDate: coalesce(dueDate, findById(tasks, id).dueDate),
-        tags: coalesce(tags, findById(tasks, id).tags),
-        updatedAt: updatedAt
+      patch tasks = updateById(tasks, task.id, {
+        title: task.title,
+        description: task.description,
+        status: task.status,
+        priority: task.priority,
+        assignee: task.assignee,
+        dueDate: task.dueDate,
+        tags: task.tags,
+        createdAt: task.createdAt,
+        updatedAt: task.updatedAt,
+        deletedAt: task.deletedAt
       })
     }
   }

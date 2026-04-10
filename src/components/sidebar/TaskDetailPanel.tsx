@@ -1,17 +1,24 @@
 'use client';
 
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Calendar, Circle, Flag, Tag, Trash2, User, X } from 'lucide-react';
 import { format, formatDistanceToNow, parseISO } from 'date-fns';
+import {
+  TaskEditorFields,
+  createTaskEditorValues,
+  toTaskDraft,
+  type TaskEditorValues,
+} from '@/components/shared/TaskEditorFields';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import type { Task } from '@/types/taskflow';
+import type { Task, TaskDraft } from '@/types/taskflow';
 
 interface TaskDetailPanelProps {
   task: Task | null;
   onClose: () => void;
   onDelete?: (id: string) => void;
+  onSave?: (id: string, draft: TaskDraft) => void;
 }
 
 const statusColors = {
@@ -27,7 +34,13 @@ const priorityColors = {
   high: 'bg-red-500/10 text-red-600 dark:text-red-400',
 };
 
-export function TaskDetailPanel({ task, onClose, onDelete }: TaskDetailPanelProps) {
+export function TaskDetailPanel({ task, onClose, onDelete, onSave }: TaskDetailPanelProps) {
+  const [formValues, setFormValues] = useState<TaskEditorValues>(() => createTaskEditorValues(task));
+
+  useEffect(() => {
+    setFormValues(createTaskEditorValues(task));
+  }, [task]);
+
   if (!task) {
     return (
       <div className="flex h-full flex-col bg-background">
@@ -41,8 +54,11 @@ export function TaskDetailPanel({ task, onClose, onDelete }: TaskDetailPanelProp
           Select a task to inspect the preserved UI shell.
         </div>
       </div>
-    );
+      );
   }
+
+  const formId = `task-detail-form-${task.id}`;
+  const canSubmit = formValues.title.trim().length > 0;
 
   return (
     <div className="flex h-full flex-col bg-background">
@@ -68,86 +84,125 @@ export function TaskDetailPanel({ task, onClose, onDelete }: TaskDetailPanelProp
         </div>
       </div>
 
-      <div className="flex-1 space-y-5 overflow-auto p-4">
-        <div className="space-y-3">
-          <div>
-            <h2 className="text-xl font-semibold">{task.title}</h2>
-            {task.description && (
+      <form
+        id={formId}
+        className="flex min-h-0 flex-1 flex-col"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!canSubmit) {
+            return;
+          }
+
+          onSave?.(task.id, toTaskDraft(formValues));
+        }}
+      >
+        <div className="flex-1 space-y-5 overflow-auto p-4">
+          <div className="space-y-3">
+            <div>
+              <h2 className="text-xl font-semibold">Edit task</h2>
               <p className="mt-2 text-sm text-muted-foreground">
-                {task.description}
+                Changes commit into the lineage-backed runtime and show up in history.
               </p>
-            )}
-          </div>
+            </div>
 
-          <div className="flex flex-wrap gap-2">
-            <Badge variant="outline" className={cn('text-xs', statusColors[task.status])}>
-              {task.status}
-            </Badge>
-            <Badge variant="outline" className={cn('text-xs', priorityColors[task.priority])}>
-              {task.priority}
-            </Badge>
-            {task.deletedAt ? (
-              <Badge variant="outline" className="text-xs text-destructive">
-                deleted
+            <div className="flex flex-wrap gap-2">
+              <Badge variant="outline" className={cn('text-xs', statusColors[task.status])}>
+                {task.status}
               </Badge>
-            ) : null}
+              <Badge variant="outline" className={cn('text-xs', priorityColors[task.priority])}>
+                {task.priority}
+              </Badge>
+              {task.deletedAt ? (
+                <Badge variant="outline" className="text-xs text-destructive">
+                  deleted
+                </Badge>
+              ) : null}
+            </div>
           </div>
-        </div>
 
-        <div className="space-y-4 rounded-lg border bg-card p-4">
-          <DetailRow
-            icon={<Circle className="h-4 w-4" />}
-            label="Status"
-            value={task.status}
-          />
-          <DetailRow
-            icon={<Flag className="h-4 w-4" />}
-            label="Priority"
-            value={task.priority}
-          />
-          <DetailRow
-            icon={<User className="h-4 w-4" />}
-            label="Assignee"
-            value={task.assignee ?? 'Unassigned'}
-          />
-          <DetailRow
-            icon={<Calendar className="h-4 w-4" />}
-            label="Due date"
-            value={task.dueDate ? format(parseISO(task.dueDate), 'MMM d, yyyy') : 'No date'}
-          />
-          <div className="flex items-start gap-3 text-sm">
-            <span className="mt-0.5 text-muted-foreground">
-              <Tag className="h-4 w-4" />
-            </span>
-            <div className="space-y-2">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Tags
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {task.tags.length > 0 ? (
-                  task.tags.map((tag) => (
-                    <Badge key={tag} variant="secondary" className="text-xs">
-                      {tag}
-                    </Badge>
-                  ))
-                ) : (
-                  <span className="text-sm text-muted-foreground">No tags</span>
-                )}
+          <div className="rounded-lg border bg-card p-4">
+            <TaskEditorFields
+              idPrefix={`task-${task.id}`}
+              value={formValues}
+              onChange={setFormValues}
+            />
+          </div>
+
+          <div className="space-y-4 rounded-lg border bg-card p-4">
+            <DetailRow
+              icon={<Circle className="h-4 w-4" />}
+              label="Current status"
+              value={task.status}
+            />
+            <DetailRow
+              icon={<Flag className="h-4 w-4" />}
+              label="Current priority"
+              value={task.priority}
+            />
+            <DetailRow
+              icon={<User className="h-4 w-4" />}
+              label="Current assignee"
+              value={task.assignee ?? 'Unassigned'}
+            />
+            <DetailRow
+              icon={<Calendar className="h-4 w-4" />}
+              label="Current due date"
+              value={task.dueDate ? format(parseISO(task.dueDate), 'MMM d, yyyy') : 'No date'}
+            />
+            <div className="flex items-start gap-3 text-sm">
+              <span className="mt-0.5 text-muted-foreground">
+                <Tag className="h-4 w-4" />
+              </span>
+              <div className="space-y-2">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Current tags
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {task.tags.length > 0 ? (
+                    task.tags.map((tag) => (
+                      <Badge key={tag} variant="secondary" className="text-xs">
+                        {tag}
+                      </Badge>
+                    ))
+                  ) : (
+                    <span className="text-sm text-muted-foreground">No tags</span>
+                  )}
+                </div>
               </div>
             </div>
           </div>
+
+          <section className="rounded-lg border bg-card p-4 text-xs text-muted-foreground">
+            <p>Created: {format(parseISO(task.createdAt), 'MMM d, yyyy h:mm a')}</p>
+            <p className="mt-2">Updated: {format(parseISO(task.updatedAt), 'MMM d, yyyy h:mm a')}</p>
+            {task.deletedAt ? (
+              <p className="mt-2">
+                Deleted {formatDistanceToNow(parseISO(task.deletedAt), { addSuffix: true })}
+              </p>
+            ) : null}
+          </section>
         </div>
 
-        <section className="rounded-lg border bg-card p-4 text-xs text-muted-foreground">
-          <p>Created: {format(parseISO(task.createdAt), 'MMM d, yyyy h:mm a')}</p>
-          <p className="mt-2">Updated: {format(parseISO(task.updatedAt), 'MMM d, yyyy h:mm a')}</p>
-          {task.deletedAt ? (
-            <p className="mt-2">
-              Deleted {formatDistanceToNow(parseISO(task.deletedAt), { addSuffix: true })}
+        <div className="border-t bg-muted/30 p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs text-muted-foreground">
+              Human edits now commit through the same MEL runtime as drag, delete, and restore.
             </p>
-          ) : null}
-        </section>
-      </div>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setFormValues(createTaskEditorValues(task))}
+              >
+                Reset
+              </Button>
+              <Button type="submit" disabled={!canSubmit}>
+                Save changes
+              </Button>
+            </div>
+          </div>
+        </div>
+      </form>
     </div>
   );
 }

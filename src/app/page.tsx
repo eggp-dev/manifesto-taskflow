@@ -1,14 +1,29 @@
 'use client';
 
+import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Calendar, MessageSquare } from 'lucide-react';
+import { Calendar, Clock3, MessageSquare, Plus } from 'lucide-react';
 import { AssistantPanel } from '@/components/assistant';
+import { LineagePanel } from '@/components/history/LineagePanel';
 import { MobileNavigation } from '@/components/shared/MobileNavigation';
+import {
+  TaskEditorFields,
+  createTaskEditorValues,
+  toTaskDraft,
+} from '@/components/shared/TaskEditorFields';
 import { ViewSwitcher } from '@/components/shared/ViewSwitcher';
 import { TaskDetailPanel } from '@/components/sidebar/TaskDetailPanel';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { DateRangePicker } from '@/components/ui/date-range-picker';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Sheet,
@@ -28,21 +43,29 @@ import type { DateFilter, ViewMode } from '@/types/taskflow';
 
 function TasksHeader({
   activeCount,
+  activeBranchName,
   inProgressCount,
   doneCount,
   dateFilter,
   deletedCount,
+  historyCount,
   viewMode,
   onDateFilterChange,
+  onOpenCreate,
+  onOpenHistory,
   onViewModeChange,
 }: {
   activeCount: number;
+  activeBranchName: string | null;
   inProgressCount: number;
   doneCount: number;
   dateFilter: DateFilter | null;
   deletedCount: number;
+  historyCount: number;
   viewMode: ViewMode;
   onDateFilterChange: (filter: DateFilter | null) => void;
+  onOpenCreate: () => void;
+  onOpenHistory: () => void;
   onViewModeChange: (viewMode: ViewMode) => void;
 }) {
   const isMobile = useIsMobile();
@@ -54,7 +77,7 @@ function TasksHeader({
           <div>
             <h1 className="text-base font-semibold sm:text-lg">TaskFlow</h1>
             <p className="text-xs text-muted-foreground">
-              Preserved UI shell on the SDK 3.8 baseline
+              Lineage-backed TaskFlow runtime on the SDK 3.8 baseline
             </p>
           </div>
           <div className="hidden items-center gap-2 text-sm text-muted-foreground lg:flex">
@@ -74,6 +97,10 @@ function TasksHeader({
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3">
+          <Button size={isMobile ? 'icon' : 'sm'} onClick={onOpenCreate}>
+            <Plus className="h-4 w-4" />
+            {isMobile ? null : <span>New task</span>}
+          </Button>
           {isMobile ? (
             <Button variant="outline" size="icon" className="h-9 w-9" disabled>
               <Calendar className="h-4 w-4" />
@@ -85,6 +112,14 @@ function TasksHeader({
               placeholder="Filter by date"
             />
           )}
+          <Button variant="outline" size={isMobile ? 'icon' : 'sm'} onClick={onOpenHistory}>
+            <Clock3 className="h-4 w-4" />
+            {isMobile ? null : (
+              <span className="ml-2">
+                History {historyCount > 0 ? `(${historyCount})` : ''}
+              </span>
+            )}
+          </Button>
           <div className="hidden sm:block">
             <ViewSwitcher
               viewMode={viewMode}
@@ -94,6 +129,11 @@ function TasksHeader({
           </div>
         </div>
       </div>
+      {!isMobile && activeBranchName ? (
+        <div className="border-t px-4 py-2 text-xs text-muted-foreground sm:px-6">
+          Active branch: {activeBranchName}
+        </div>
+      ) : null}
     </header>
   );
 }
@@ -124,14 +164,27 @@ function AssistantToggle({
 }
 
 export default function Home() {
-  const { state, actions } = useTaskFlow();
+  const { state, ready, actions } = useTaskFlow();
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [createValues, setCreateValues] = useState(() => createTaskEditorValues());
 
   const isMobile = useIsMobile();
   const isDesktop = useIsDesktop();
 
+  if (!ready || !state) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-background">
+        <p className="text-sm text-muted-foreground">Loading lineage runtime...</p>
+      </div>
+    );
+  }
+
   const {
     activeTasks,
+    activeBranchName,
     deletedTasks,
+    historyEntries,
     selectedTask,
     selectedTaskId,
     viewMode,
@@ -144,9 +197,67 @@ export default function Home() {
   } = state;
 
   const filteredActiveTasks = filterTasksByDate(activeTasks, dateFilter);
+  const canCreateTask = createValues.title.trim().length > 0;
 
   return (
     <div className="flex h-screen bg-background">
+      <Dialog
+        open={createDialogOpen}
+        onOpenChange={(open) => {
+          setCreateDialogOpen(open);
+
+          if (!open) {
+            setCreateValues(createTaskEditorValues());
+          }
+        }}
+      >
+        <DialogContent className="max-h-[90vh] overflow-hidden sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Create task</DialogTitle>
+            <DialogDescription>
+              New tasks are committed through MEL and appear in lineage history immediately.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form
+            className="flex min-h-0 flex-1 flex-col overflow-hidden"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (!canCreateTask) {
+                return;
+              }
+
+              actions.createTask(toTaskDraft(createValues));
+              setCreateDialogOpen(false);
+              setCreateValues(createTaskEditorValues());
+            }}
+          >
+            <div className="flex-1 overflow-auto pr-1">
+              <TaskEditorFields
+                idPrefix="create-task"
+                value={createValues}
+                onChange={setCreateValues}
+              />
+            </div>
+            <DialogFooter className="mt-4">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => {
+                  setCreateDialogOpen(false);
+                  setCreateValues(createTaskEditorValues());
+                }}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={!canCreateTask}>
+                Create task
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
       {isDesktop ? (
         <AnimatePresence mode="wait">
           {selectedTask ? (
@@ -162,6 +273,7 @@ export default function Home() {
                   task={selectedTask}
                   onClose={() => actions.selectTask(null)}
                   onDelete={actions.softDeleteTask}
+                  onSave={actions.updateTask}
                 />
               </div>
             </motion.aside>
@@ -189,6 +301,7 @@ export default function Home() {
               task={selectedTask}
               onClose={() => actions.selectTask(null)}
               onDelete={actions.softDeleteTask}
+              onSave={actions.updateTask}
             />
           </SheetContent>
         </Sheet>
@@ -197,12 +310,16 @@ export default function Home() {
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <TasksHeader
           activeCount={totalCount}
+          activeBranchName={activeBranchName}
           inProgressCount={inProgressCount}
           doneCount={doneCount}
           dateFilter={dateFilter}
           deletedCount={deletedCount}
+          historyCount={historyEntries.length}
           viewMode={viewMode}
           onDateFilterChange={actions.setDateFilter}
+          onOpenCreate={() => setCreateDialogOpen(true)}
+          onOpenHistory={() => setHistoryOpen(true)}
           onViewModeChange={actions.changeView}
         />
 
@@ -290,6 +407,46 @@ export default function Home() {
           ) : null}
         </AnimatePresence>
       </div>
+
+      {isDesktop ? (
+        <AnimatePresence mode="wait">
+          {historyOpen ? (
+            <motion.aside
+              initial={{ width: 0, opacity: 0 }}
+              animate={{ width: 360, opacity: 1 }}
+              exit={{ width: 0, opacity: 0 }}
+              transition={{ duration: 0.2, ease: 'easeInOut' }}
+              className="flex-shrink-0 overflow-hidden border-l"
+            >
+              <div className="h-full w-[360px] overflow-hidden">
+                <LineagePanel
+                  activeBranchName={activeBranchName}
+                  entries={historyEntries}
+                  onClose={() => setHistoryOpen(false)}
+                />
+              </div>
+            </motion.aside>
+          ) : null}
+        </AnimatePresence>
+      ) : (
+        <Sheet open={historyOpen} onOpenChange={setHistoryOpen}>
+          <SheetContent
+            side={isMobile ? 'bottom' : 'right'}
+            className={isMobile ? 'h-[85vh] rounded-t-xl p-0' : 'w-[360px] max-w-full p-0'}
+            hideCloseButton
+          >
+            <span className="sr-only">
+              <SheetTitle>Lineage history</SheetTitle>
+              <SheetDescription>Manifesto lineage history panel.</SheetDescription>
+            </span>
+            <LineagePanel
+              activeBranchName={activeBranchName}
+              entries={historyEntries}
+              onClose={() => setHistoryOpen(false)}
+            />
+          </SheetContent>
+        </Sheet>
+      )}
 
       {isDesktop ? (
         <AnimatePresence mode="wait">
