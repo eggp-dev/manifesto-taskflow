@@ -62,11 +62,55 @@ export interface TaskFlowAgentCausalGraph {
   edges: TaskFlowAgentCausalGraphEdge[];
 }
 
+export type TaskFlowHeaderActionId =
+  | 'create-task'
+  | 'date-filter'
+  | 'history';
+
+type TaskFlowHoveredTargetBase = {
+  label: string;
+  capturedAt: number;
+  availableActions: string[];
+};
+
+export type TaskFlowHoveredTaskCard = TaskFlowHoveredTargetBase & {
+  kind: 'task-card';
+  taskId: string;
+};
+
+export type TaskFlowHoveredHeaderAction = TaskFlowHoveredTargetBase & {
+  kind: 'header-action';
+  actionId: TaskFlowHeaderActionId;
+};
+
+export type TaskFlowHoveredLineageEntry = TaskFlowHoveredTargetBase & {
+  kind: 'lineage-entry';
+  worldId: string;
+  branchName: string;
+  actionName: string;
+  summary: string;
+};
+
+export type TaskFlowHoveredTarget =
+  | TaskFlowHoveredTaskCard
+  | TaskFlowHoveredHeaderAction
+  | TaskFlowHoveredLineageEntry;
+
+export interface TaskFlowHoveredInspection {
+  title: string;
+  description: string;
+  metadata: Array<{
+    label: string;
+    value: string;
+  }>;
+}
+
 export interface TaskFlowAgentContext {
   branchName: string | null;
   visibleWorldId: string | null;
   selectedTaskId: string | null;
   selectedTask: TaskFlowAgentTaskSummary | null;
+  hoveredTarget: TaskFlowHoveredTarget | null;
   snapshot: TaskFlowAgentSnapshot;
   causalGraph: TaskFlowAgentCausalGraph;
   counts: {
@@ -91,6 +135,9 @@ export interface TaskFlowToolOutput {
   skipped?: boolean;
   snapshotDiff?: string[];
   matches?: TaskFlowLineageMatch[];
+  hoveredTarget?: TaskFlowHoveredTarget;
+  inspection?: TaskFlowHoveredInspection;
+  uiAction?: string;
 }
 
 export interface TaskFlowCreateTaskInput {
@@ -140,6 +187,10 @@ export interface TaskFlowSearchLineageInput {
   limit?: number;
 }
 
+export type TaskFlowInspectHoveredTargetInput = Record<string, never>;
+
+export type TaskFlowActivateHoveredTargetInput = Record<string, never>;
+
 export interface TaskFlowLineageMatch {
   worldId: string;
   branchName: string;
@@ -180,6 +231,14 @@ export interface TaskFlowAssistantToolMap {
     input: TaskFlowSearchLineageInput;
     output: TaskFlowToolOutput;
   };
+  inspect_hovered_target: {
+    input: TaskFlowInspectHoveredTargetInput;
+    output: TaskFlowToolOutput;
+  };
+  activate_hovered_target: {
+    input: TaskFlowActivateHoveredTargetInput;
+    output: TaskFlowToolOutput;
+  };
 }
 
 export type TaskFlowAssistantUITools = TaskFlowAssistantToolMap & Record<
@@ -200,6 +259,8 @@ const TASKFLOW_ASSISTANT_TOOL_NAMES = [
   'restore_task',
   'select_task',
   'search_lineage',
+  'inspect_hovered_target',
+  'activate_hovered_target',
 ] as const satisfies readonly TaskFlowAssistantToolName[];
 
 export function isTaskFlowAssistantToolName(value: string): value is TaskFlowAssistantToolName {

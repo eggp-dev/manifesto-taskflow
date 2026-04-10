@@ -10,9 +10,11 @@ import type {
 
 interface AssistantPanelProps {
   onClose: () => void;
+  onResetSession?: () => Promise<void> | void;
   messages: TaskFlowAssistantUIMessage[];
   onSubmit: (message: string) => Promise<void> | void;
   isLoading?: boolean;
+  isResetting?: boolean;
   disabled?: boolean;
   disabledMessage?: string;
   onApproveDelete?: (
@@ -27,9 +29,11 @@ interface AssistantPanelProps {
 
 export function AssistantPanel({
   onClose,
+  onResetSession,
   messages,
   onSubmit,
   isLoading = false,
+  isResetting = false,
   disabled = false,
   disabledMessage,
   onApproveDelete,
@@ -37,7 +41,11 @@ export function AssistantPanel({
 }: AssistantPanelProps) {
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[#111111] text-[#ededed]">
-      <AssistantHeader onClose={onClose} />
+      <AssistantHeader
+        onClose={onClose}
+        onResetSession={onResetSession}
+        isResetting={isResetting}
+      />
       <AssistantMessages
         messages={messages}
         isLoading={isLoading}
@@ -46,7 +54,7 @@ export function AssistantPanel({
       />
       <AssistantInput
         onSubmit={onSubmit}
-        isLoading={isLoading}
+        isLoading={isLoading || isResetting}
         disabled={disabled}
         disabledMessage={
           disabled ? (disabledMessage ?? 'Assistant is currently unavailable.') : undefined

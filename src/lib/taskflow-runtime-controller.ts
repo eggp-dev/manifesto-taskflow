@@ -51,6 +51,8 @@ import type {
   TaskFlowAssistantToolName,
   TaskFlowAssistantUITools,
   TaskFlowAssistantUIMessage,
+  TaskFlowHoveredInspection,
+  TaskFlowHoveredTarget,
 } from '@/types/taskflow-assistant';
 import {
   toTaskFlowAgentTaskSummary,
@@ -103,6 +105,9 @@ export type TaskFlowActions = {
   selectTask: (taskId: string | null) => void;
   changeView: (mode: ViewMode) => void;
   setDateFilter: (filter: DateFilter | null) => void;
+  setHistoryOpen: (open: boolean) => void;
+  setCreateDialogOpen: (open: boolean) => void;
+  setDatePickerOpen: (open: boolean) => void;
   moveTask: (taskId: string, newStatus: TaskStatus) => void;
   softDeleteTask: (id: string) => void;
   restoreTask: (id: string) => void;
@@ -111,12 +116,19 @@ export type TaskFlowActions = {
   toggleAssistant: (open: boolean) => void;
 };
 
+type TaskFlowUiSessionState = {
+  hoveredTarget: TaskFlowHoveredTarget | null;
+  historyOpen: boolean;
+  createDialogOpen: boolean;
+  datePickerOpen: boolean;
+};
+
 export type TaskFlowViewState = TaskFlowRuntimeState & {
   dateFilter: DateFilter | null;
   historyEntries: TaskFlowHistoryEntry[];
   activeBranchName: string | null;
   visibleWorldId: string | null;
-};
+} & TaskFlowUiSessionState;
 
 export type TaskFlowControllerSnapshot = {
   ready: boolean;
@@ -669,6 +681,21 @@ function buildAgentCausalGraph(args: {
   };
 }
 
+function getHoveredTargetIdentity(target: TaskFlowHoveredTarget | null): string {
+  if (!target) {
+    return 'null';
+  }
+
+  switch (target.kind) {
+    case 'task-card':
+      return `task-card:${target.taskId}`;
+    case 'header-action':
+      return `header-action:${target.actionId}`;
+    case 'lineage-entry':
+      return `lineage-entry:${target.worldId}`;
+  }
+}
+
 export class TaskFlowRuntimeController {
   private readonly storage: StorageLike | null;
   private readonly clockFactory: TaskFlowClockFactory;
@@ -680,11 +707,17 @@ export class TaskFlowRuntimeController {
   private store: InMemoryLineageStore | null = null;
   private unsubscribeRuntime: (() => void) | null = null;
   private startPromise: Promise<void> | null = null;
+  private resetPromise: Promise<void> | null = null;
+  private hoveredTargetTimer: ReturnType<typeof setTimeout> | null = null;
 
   private ready = false;
   private state: TaskFlowViewState | null = null;
   private runtimeState: TaskFlowRuntimeState | null = null;
   private dateFilter: DateFilter | null = null;
+  private hoveredTarget: TaskFlowHoveredTarget | null = null;
+  private historyOpen = false;
+  private createDialogOpen = false;
+  private datePickerOpen = false;
   private historyEntries: TaskFlowHistoryEntry[] = [];
   private activeBranchId: string | null = null;
   private activeBranchName: string | null = null;
@@ -718,7 +751,16 @@ export class TaskFlowRuntimeController {
     },
     setDateFilter: (filter) => {
       this.dateFilter = filter;
-      this.rebuildState();
+      this.rebuildState({ persistRuntime: false });
+    },
+    setHistoryOpen: (open) => {
+      this.setHistoryOpen(open);
+    },
+    setCreateDialogOpen: (open) => {
+      this.setCreateDialogOpen(open);
+    },
+    setDatePickerOpen: (open) => {
+      this.setDatePickerOpen(open);
     },
     moveTask: (taskId, newStatus) => {
       void this.moveTask(taskId, newStatus);
@@ -759,6 +801,71 @@ export class TaskFlowRuntimeController {
 
   getSnapshot = (): TaskFlowControllerSnapshot => this.controllerSnapshot;
 
+  setHistoryOpen(open: boolean): void {
+    if (this.historyOpen === open) {
+      return;
+    }
+
+    this.historyOpen = open;
+    this.rebuildState({ persistRuntime: false });
+  }
+
+  setCreateDialogOpen(open: boolean): void {
+    if (this.createDialogOpen === open) {
+      return;
+    }
+
+    this.createDialogOpen = open;
+    this.rebuildState({ persistRuntime: false });
+  }
+
+  setDatePickerOpen(open: boolean): void {
+    if (this.datePickerOpen === open) {
+      return;
+    }
+
+    this.datePickerOpen = open;
+    this.rebuildState({ persistRuntime: false });
+  }
+
+  setHoveredTarget(target: TaskFlowHoveredTarget | null): void {
+    this.cancelHoveredTargetSchedule();
+
+    if (getHoveredTargetIdentity(this.hoveredTarget) === getHoveredTargetIdentity(target)) {
+      return;
+    }
+
+    this.hoveredTarget = target;
+    this.rebuildState({ persistRuntime: false });
+  }
+
+  scheduleHoveredTarget(target: TaskFlowHoveredTarget | null, delay = 150): void {
+    this.cancelHoveredTargetSchedule();
+
+    if (!target) {
+      return;
+    }
+
+    if (delay <= 0) {
+      this.setHoveredTarget(target);
+      return;
+    }
+
+    this.hoveredTargetTimer = setTimeout(() => {
+      this.hoveredTargetTimer = null;
+      this.setHoveredTarget(target);
+    }, delay);
+  }
+
+  cancelHoveredTargetSchedule(): void {
+    if (!this.hoveredTargetTimer) {
+      return;
+    }
+
+    clearTimeout(this.hoveredTargetTimer);
+    this.hoveredTargetTimer = null;
+  }
+
   async start(): Promise<void> {
     if (this.startPromise) {
       return this.startPromise;
@@ -768,7 +875,42 @@ export class TaskFlowRuntimeController {
     return this.startPromise;
   }
 
+  async resetSession(): Promise<void> {
+    if (this.resetPromise) {
+      return this.resetPromise;
+    }
+
+    this.resetPromise = (async () => {
+      const reopenAssistant = this.state?.assistantOpen === true;
+
+      clearPersistedAssistantMessages(this.storage);
+      clearPersistedLineageState(this.storage);
+      this.historyMeta.clear();
+      this.dateFilter = null;
+      this.hoveredTarget = null;
+      this.historyOpen = false;
+      this.createDialogOpen = false;
+      this.datePickerOpen = false;
+
+      this.dispose();
+      await this.start();
+
+      if (reopenAssistant && this.runtime) {
+        await this.commitUiIntent(
+          'toggleAssistant',
+          (instance, stamp) => instance.createIntent(instance.MEL.actions.toggleAssistant, true, stamp),
+          { open: true },
+        );
+      }
+    })().finally(() => {
+      this.resetPromise = null;
+    });
+
+    return this.resetPromise;
+  }
+
   dispose(): void {
+    this.cancelHoveredTargetSchedule();
     this.unsubscribeRuntime?.();
     this.unsubscribeRuntime = null;
     this.runtime?.dispose();
@@ -778,11 +920,16 @@ export class TaskFlowRuntimeController {
     this.ready = false;
     this.runtimeState = null;
     this.state = null;
+    this.hoveredTarget = null;
+    this.historyOpen = false;
+    this.createDialogOpen = false;
+    this.datePickerOpen = false;
     this.historyEntries = [];
     this.activeBranchId = null;
     this.activeBranchName = null;
     this.visibleWorldId = null;
     this.agentCausalGraph = null;
+    this.dateFilter = null;
     this.startPromise = null;
     this.updateControllerSnapshot();
     this.emit();
@@ -797,6 +944,7 @@ export class TaskFlowRuntimeController {
       visibleWorldId: state?.visibleWorldId ?? null,
       selectedTaskId: state?.selectedTaskId ?? null,
       selectedTask: state?.selectedTask ? toTaskFlowAgentTaskSummary(state.selectedTask) : null,
+      hoveredTarget: this.hoveredTarget,
       snapshot: {
         data: snapshot ? toSerializableRecord(snapshot.data) : {},
         computed: snapshot ? toSerializableRecord(snapshot.computed) : {},
@@ -828,6 +976,128 @@ export class TaskFlowRuntimeController {
         createdAt: entry.createdAt,
       })),
     };
+  }
+
+  private buildHoveredInspection(target: TaskFlowHoveredTarget): TaskFlowHoveredInspection | null {
+    switch (target.kind) {
+      case 'task-card': {
+        const task = this.findTaskById(target.taskId);
+
+        if (!task) {
+          return null;
+        }
+
+        return {
+          title: task.title,
+          description:
+            task.description ??
+            `Status ${task.status}, priority ${task.priority}.`,
+          metadata: [
+            { label: 'Task ID', value: task.id },
+            { label: 'Status', value: task.status },
+            { label: 'Priority', value: task.priority },
+            { label: 'Assignee', value: task.assignee ?? 'none' },
+            { label: 'Due date', value: task.dueDate ?? 'none' },
+          ],
+        };
+      }
+      case 'header-action':
+        return {
+          title: target.label,
+          description: (() => {
+            switch (target.actionId) {
+              case 'create-task':
+                return 'Opens the create-task dialog so you can add a new task.';
+              case 'date-filter':
+                return 'Opens the date filter popover for due date or created date presets.';
+              case 'history':
+                return 'Opens the lineage history panel for recent commits and branch activity.';
+            }
+          })(),
+          metadata: [
+            { label: 'Action ID', value: target.actionId },
+            { label: 'Available actions', value: target.availableActions.join(', ') },
+          ],
+        };
+      case 'lineage-entry': {
+        const entry =
+          this.historyEntries.find((historyEntry) => historyEntry.worldId === target.worldId) ??
+          null;
+
+        return {
+          title: target.label,
+          description: target.summary,
+          metadata: [
+            { label: 'World ID', value: target.worldId },
+            { label: 'Branch', value: target.branchName },
+            { label: 'Action', value: target.actionName },
+            {
+              label: 'Created',
+              value: entry ? new Date(entry.createdAt).toISOString() : 'unknown',
+            },
+          ],
+        };
+      }
+    }
+  }
+
+  private activateHoveredTarget(): TaskFlowAgentToolResult | Promise<TaskFlowAgentToolResult> {
+    const hoveredTarget = this.hoveredTarget;
+
+    if (!hoveredTarget) {
+      return {
+        state: 'output-error',
+        errorText: 'There is no hovered semantic target in the current TaskFlow context.',
+      };
+    }
+
+    switch (hoveredTarget.kind) {
+      case 'task-card':
+        return this.executeAgentTool('select_task', { taskId: hoveredTarget.taskId });
+      case 'header-action': {
+        switch (hoveredTarget.actionId) {
+          case 'create-task':
+            this.setCreateDialogOpen(true);
+            return {
+              state: 'output-available',
+              output: {
+                ok: true,
+                summary: 'Opened the create-task dialog.',
+                hoveredTarget,
+                uiAction: 'open_create_dialog',
+              },
+            };
+          case 'date-filter':
+            this.setDatePickerOpen(true);
+            return {
+              state: 'output-available',
+              output: {
+                ok: true,
+                summary: 'Opened the date filter popover.',
+                hoveredTarget,
+                uiAction: 'open_date_filter',
+              },
+            };
+          case 'history':
+            this.setHistoryOpen(true);
+            return {
+              state: 'output-available',
+              output: {
+                ok: true,
+                summary: 'Opened the lineage history panel.',
+                hoveredTarget,
+                uiAction: 'open_history',
+              },
+            };
+        }
+      }
+      case 'lineage-entry':
+        return {
+          state: 'output-error',
+          errorText:
+            'Hovered lineage entries are read-only. I can inspect or search related history, but I cannot open or restore them directly.',
+        };
+    }
   }
 
   async executeAgentTool<T extends TaskFlowAssistantToolName>(
@@ -1160,6 +1430,37 @@ export class TaskFlowRuntimeController {
           },
         };
       }
+      case 'inspect_hovered_target': {
+        const hoveredTarget = this.hoveredTarget;
+
+        if (!hoveredTarget) {
+          return {
+            state: 'output-error',
+            errorText: 'There is no hovered semantic target in the current TaskFlow context.',
+          };
+        }
+
+        const inspection = this.buildHoveredInspection(hoveredTarget);
+
+        if (!inspection) {
+          return {
+            state: 'output-error',
+            errorText: 'The hovered target could not be resolved in the current TaskFlow context.',
+          };
+        }
+
+        return {
+          state: 'output-available',
+          output: {
+            ok: true,
+            summary: inspection.description,
+            hoveredTarget,
+            inspection,
+          },
+        };
+      }
+      case 'activate_hovered_target':
+        return this.activateHoveredTarget();
       default:
         return {
           state: 'output-error',
@@ -1276,7 +1577,7 @@ export class TaskFlowRuntimeController {
     });
   }
 
-  private rebuildState(): void {
+  private rebuildState(options?: { persistRuntime?: boolean }): void {
     if (!this.runtimeState) {
       this.state = null;
       this.updateControllerSnapshot();
@@ -1287,13 +1588,19 @@ export class TaskFlowRuntimeController {
     this.state = {
       ...this.runtimeState,
       dateFilter: this.dateFilter,
+      hoveredTarget: this.hoveredTarget,
+      historyOpen: this.historyOpen,
+      createDialogOpen: this.createDialogOpen,
+      datePickerOpen: this.datePickerOpen,
       historyEntries: this.historyEntries,
       activeBranchName: this.activeBranchName,
       visibleWorldId: this.visibleWorldId,
     };
 
     this.updateControllerSnapshot();
-    this.persistRuntimeState();
+    if (options?.persistRuntime !== false) {
+      this.persistRuntimeState();
+    }
     this.emit();
   }
 

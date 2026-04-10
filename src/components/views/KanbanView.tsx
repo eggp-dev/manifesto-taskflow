@@ -57,6 +57,7 @@ const COLUMNS: StatusColumn[] = [
 interface KanbanViewProps {
   tasks: Task[];
   selectedTaskId: string | null;
+  hoveredTaskId?: string | null;
   onSelectTask: (taskId: string) => void;
   onMoveTask?: (taskId: string, status: TaskStatus) => void;
 }
@@ -64,10 +65,11 @@ interface KanbanViewProps {
 interface SortableTaskProps {
   task: Task;
   isSelected: boolean;
+  isSemanticHovered: boolean;
   onSelect: () => void;
 }
 
-function SortableTask({ task, isSelected, onSelect }: SortableTaskProps) {
+function SortableTask({ task, isSelected, isSemanticHovered, onSelect }: SortableTaskProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: task.id });
 
@@ -82,7 +84,12 @@ function SortableTask({ task, isSelected, onSelect }: SortableTaskProps) {
       {...attributes}
       {...listeners}
     >
-      <TaskCard task={task} isSelected={isSelected} onSelect={onSelect} />
+      <TaskCard
+        task={task}
+        isSelected={isSelected}
+        isSemanticHovered={isSemanticHovered}
+        onSelect={onSelect}
+      />
     </div>
   );
 }
@@ -104,6 +111,7 @@ function DroppableColumn({ status, children }: { status: TaskStatus; children: R
 export function KanbanView({
   tasks,
   selectedTaskId,
+  hoveredTaskId = null,
   onSelectTask,
   onMoveTask,
 }: KanbanViewProps) {
@@ -183,6 +191,7 @@ export function KanbanView({
                     key={task.id}
                     task={task}
                     isSelected={selectedTaskId === task.id}
+                    isSemanticHovered={hoveredTaskId === task.id}
                     onSelect={() => onSelectTask(task.id)}
                   />
                 ))}
@@ -200,7 +209,7 @@ export function KanbanView({
       <DragOverlay>
         {activeTask ? (
           <div className="w-[280px]">
-            <TaskCard task={activeTask} />
+            <TaskCard task={activeTask} enableSemanticHover={false} />
           </div>
         ) : null}
       </DragOverlay>

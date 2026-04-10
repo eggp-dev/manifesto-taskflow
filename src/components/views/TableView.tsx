@@ -1,5 +1,6 @@
 'use client';
 
+import { motion } from 'framer-motion';
 import {
   Table,
   TableBody,
@@ -10,6 +11,7 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
+import { useTaskFlowSemanticHoverTarget } from '@/hooks/useTaskFlowSemanticHoverTarget';
 import { cn } from '@/lib/utils';
 import type { Task } from '@/types/taskflow';
 import { format, parseISO } from 'date-fns';
@@ -38,12 +40,14 @@ const statusLabels = {
 interface TableViewProps {
   tasks: Task[];
   selectedTaskId: string | null;
+  hoveredTaskId?: string | null;
   onSelectTask: (taskId: string) => void;
 }
 
 export function TableView({
   tasks,
   selectedTaskId,
+  hoveredTaskId = null,
   onSelectTask,
 }: TableViewProps) {
   if (tasks.length === 0) {
@@ -70,84 +74,129 @@ export function TableView({
         </TableHeader>
         <TableBody>
           {tasks.map((task) => (
-            <TableRow
+            <TaskTableRow
               key={task.id}
-              className={cn(
-                'cursor-pointer touch-manipulation',
-                selectedTaskId === task.id && 'bg-muted'
-              )}
-              onClick={() => onSelectTask(task.id)}
-            >
-              <TableCell className="py-3">
-                <Checkbox
-                  checked={task.status === 'done'}
-                  disabled
-                  onClick={(e) => e.stopPropagation()}
-                  className="h-5 w-5"
-                />
-              </TableCell>
-              <TableCell className="py-3">
-                <div>
-                  <div
-                    className={cn(
-                      'font-medium',
-                      task.status === 'done' && 'line-through text-muted-foreground'
-                    )}
-                  >
-                    {task.title}
-                  </div>
-                  {task.description && (
-                    <div className="text-xs text-muted-foreground line-clamp-1">
-                      {task.description}
-                    </div>
-                  )}
-                  {/* Show priority inline on mobile */}
-                  <div className="flex items-center gap-2 mt-1 sm:hidden">
-                    <Badge variant="outline" className={cn('text-xs', priorityColors[task.priority])}>
-                      {task.priority}
-                    </Badge>
-                    {task.dueDate && (
-                      <span className="text-xs text-muted-foreground">
-                        {format(parseISO(task.dueDate), 'MMM d')}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </TableCell>
-              <TableCell className="py-3">
-                <Badge variant="outline" className={cn('text-xs', statusColors[task.status])}>
-                  {statusLabels[task.status]}
-                </Badge>
-              </TableCell>
-              <TableCell className="py-3 hidden sm:table-cell">
-                <Badge variant="outline" className={cn('text-xs', priorityColors[task.priority])}>
-                  {task.priority}
-                </Badge>
-              </TableCell>
-              <TableCell className="py-3 text-sm text-muted-foreground hidden md:table-cell">
-                {task.dueDate ? format(parseISO(task.dueDate), 'MMM d, yyyy') : '-'}
-              </TableCell>
-              <TableCell className="py-3 text-sm text-muted-foreground hidden lg:table-cell">
-                {task.assignee || '-'}
-              </TableCell>
-              <TableCell className="py-3 hidden lg:table-cell">
-                <div className="flex flex-wrap gap-1">
-                  {task.tags.slice(0, 2).map((tag) => (
-                    <Badge key={tag} variant="secondary" className="text-xs">
-                      {tag}
-                    </Badge>
-                  ))}
-                  {task.tags.length > 2 && (
-                    <Badge variant="secondary" className="text-xs">
-                      +{task.tags.length - 2}
-                    </Badge>
-                  )}
-                </div>
-              </TableCell>
-            </TableRow>
+              task={task}
+              isSelected={selectedTaskId === task.id}
+              isSemanticHovered={hoveredTaskId === task.id}
+              onSelectTask={onSelectTask}
+            />
           ))}
         </TableBody>
       </Table>
     </div>
+  );
+}
+
+function TaskTableRow({
+  task,
+  isSelected,
+  isSemanticHovered,
+  onSelectTask,
+}: {
+  task: Task;
+  isSelected: boolean;
+  isSemanticHovered: boolean;
+  onSelectTask: (taskId: string) => void;
+}) {
+  const hoverProps = useTaskFlowSemanticHoverTarget(() => ({
+    kind: 'task-card',
+    taskId: task.id,
+    label: task.title,
+    capturedAt: Date.now(),
+    availableActions: [
+      'inspect_hovered_target',
+      'activate_hovered_target',
+      'select_task',
+      'update_task',
+      'move_task',
+      'delete_task',
+    ],
+  }));
+  const isActiveVisual = isSemanticHovered || isSelected;
+
+  return (
+    <motion.tr
+      animate={
+        isActiveVisual
+          ? { opacity: 1, scale: 0.95 }
+          : { opacity: 1, scale: 1 }
+      }
+      transition={{ duration: 0.18, ease: 'easeOut' }}
+      className={cn(
+        'cursor-pointer touch-manipulation border-b transition-colors',
+        isSelected && 'bg-muted/70',
+        isActiveVisual && 'bg-white/[0.06] shadow-[inset_0_1px_0_rgba(255,255,255,0.08),inset_0_-1px_0_rgba(255,255,255,0.04)] backdrop-blur-xl'
+      )}
+      onClick={() => onSelectTask(task.id)}
+      tabIndex={0}
+      {...hoverProps}
+    >
+      <TableCell className="py-3">
+        <Checkbox
+          checked={task.status === 'done'}
+          disabled
+          onClick={(e) => e.stopPropagation()}
+          className="h-5 w-5"
+        />
+      </TableCell>
+      <TableCell className="py-3">
+        <div>
+          <div
+            className={cn(
+              'font-medium',
+              task.status === 'done' && 'line-through text-muted-foreground'
+            )}
+          >
+            {task.title}
+          </div>
+          {task.description && (
+            <div className="text-xs text-muted-foreground line-clamp-1">
+              {task.description}
+            </div>
+          )}
+          <div className="mt-1 flex items-center gap-2 sm:hidden">
+            <Badge variant="outline" className={cn('text-xs', priorityColors[task.priority])}>
+              {task.priority}
+            </Badge>
+            {task.dueDate && (
+              <span className="text-xs text-muted-foreground">
+                {format(parseISO(task.dueDate), 'MMM d')}
+              </span>
+            )}
+          </div>
+        </div>
+      </TableCell>
+      <TableCell className="py-3">
+        <Badge variant="outline" className={cn('text-xs', statusColors[task.status])}>
+          {statusLabels[task.status]}
+        </Badge>
+      </TableCell>
+      <TableCell className="hidden py-3 sm:table-cell">
+        <Badge variant="outline" className={cn('text-xs', priorityColors[task.priority])}>
+          {task.priority}
+        </Badge>
+      </TableCell>
+      <TableCell className="hidden py-3 text-sm text-muted-foreground md:table-cell">
+        {task.dueDate ? format(parseISO(task.dueDate), 'MMM d, yyyy') : '-'}
+      </TableCell>
+      <TableCell className="hidden py-3 text-sm text-muted-foreground lg:table-cell">
+        {task.assignee || '-'}
+      </TableCell>
+      <TableCell className="hidden py-3 lg:table-cell">
+        <div className="flex flex-wrap gap-1">
+          {task.tags.slice(0, 2).map((tag) => (
+            <Badge key={tag} variant="secondary" className="text-xs">
+              {tag}
+            </Badge>
+          ))}
+          {task.tags.length > 2 && (
+            <Badge variant="secondary" className="text-xs">
+              +{task.tags.length - 2}
+            </Badge>
+          )}
+        </div>
+      </TableCell>
+    </motion.tr>
   );
 }

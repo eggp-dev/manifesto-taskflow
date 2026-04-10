@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Calendar, Clock3, MessageSquare, Plus } from 'lucide-react';
+import { Clock3, MessageSquare, Plus } from 'lucide-react';
 import { AssistantPanel } from '@/components/assistant';
 import { LineagePanel } from '@/components/history/LineagePanel';
 import { MobileNavigation } from '@/components/shared/MobileNavigation';
@@ -36,9 +36,11 @@ import { TableView } from '@/components/views/TableView';
 import { TodoView } from '@/components/views/TodoView';
 import { TrashView } from '@/components/views/TrashView';
 import { useIsDesktop, useIsMobile } from '@/hooks/useMediaQuery';
+import { useTaskFlowSemanticHoverTarget } from '@/hooks/useTaskFlowSemanticHoverTarget';
 import { useTaskFlow } from '@/hooks/useTaskFlow';
 import { useTaskFlowAssistant } from '@/hooks/useTaskFlowAssistant';
 import { filterTasksByDate } from '@/lib/date-filter';
+import { cn } from '@/lib/utils';
 import type { DateFilter, ViewMode } from '@/types/taskflow';
 
 function TasksHeader({
@@ -47,11 +49,16 @@ function TasksHeader({
   inProgressCount,
   doneCount,
   dateFilter,
+  datePickerOpen,
+  createDialogOpen,
   deletedCount,
+  hoveredHeaderActionId,
   historyCount,
+  historyOpen,
   referenceNow,
   viewMode,
   onDateFilterChange,
+  onDatePickerOpenChange,
   onOpenCreate,
   onOpenHistory,
   onViewModeChange,
@@ -61,16 +68,45 @@ function TasksHeader({
   inProgressCount: number;
   doneCount: number;
   dateFilter: DateFilter | null;
+  datePickerOpen: boolean;
+  createDialogOpen: boolean;
   deletedCount: number;
+  hoveredHeaderActionId: 'create-task' | 'date-filter' | 'history' | null;
   historyCount: number;
+  historyOpen: boolean;
   referenceNow: string | null;
   viewMode: ViewMode;
   onDateFilterChange: (filter: DateFilter | null) => void;
+  onDatePickerOpenChange: (open: boolean) => void;
   onOpenCreate: () => void;
   onOpenHistory: () => void;
   onViewModeChange: (viewMode: ViewMode) => void;
 }) {
   const isMobile = useIsMobile();
+  const createSemanticHovered = hoveredHeaderActionId === 'create-task' || createDialogOpen;
+  const dateSemanticHovered = hoveredHeaderActionId === 'date-filter' || datePickerOpen;
+  const historySemanticHovered = hoveredHeaderActionId === 'history' || historyOpen;
+  const createHoverProps = useTaskFlowSemanticHoverTarget(() => ({
+    kind: 'header-action',
+    actionId: 'create-task',
+    label: 'Create task',
+    capturedAt: Date.now(),
+    availableActions: ['inspect_hovered_target', 'activate_hovered_target'],
+  }));
+  const dateHoverProps = useTaskFlowSemanticHoverTarget(() => ({
+    kind: 'header-action',
+    actionId: 'date-filter',
+    label: 'Date filter',
+    capturedAt: Date.now(),
+    availableActions: ['inspect_hovered_target', 'activate_hovered_target'],
+  }));
+  const historyHoverProps = useTaskFlowSemanticHoverTarget(() => ({
+    kind: 'header-action',
+    actionId: 'history',
+    label: 'Lineage history',
+    capturedAt: Date.now(),
+    availableActions: ['inspect_hovered_target', 'activate_hovered_target', 'search_lineage'],
+  }));
 
   return (
     <header className="border-b bg-muted/20">
@@ -102,40 +138,103 @@ function TasksHeader({
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3">
-          <Button size={isMobile ? 'icon' : 'sm'} onClick={onOpenCreate}>
-            <Plus className="h-4 w-4" />
-            {isMobile ? null : <span>New task</span>}
-          </Button>
-          {isMobile ? (
-            <Button variant="outline" size="icon" className="h-9 w-9" disabled>
-              <Calendar className="h-4 w-4" />
+          <motion.div
+            animate={
+              createSemanticHovered
+                ? { opacity: 1, scale: 0.95 }
+                : { opacity: 1, scale: 1 }
+            }
+            transition={{ duration: 0.18, ease: 'easeOut' }}
+            className="relative"
+          >
+            {createSemanticHovered ? (
+              <motion.div
+                layoutId="semantic-hover-header"
+                className="pointer-events-none absolute -inset-1 rounded-xl bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.18),rgba(56,189,248,0.08)_42%,transparent_72%)] blur-md"
+              />
+            ) : null}
+            <Button
+              variant="outline"
+              size="icon"
+              className={cn(
+                'relative h-9 w-9 transition-all',
+                createSemanticHovered && 'border-white/14 bg-white/[0.08] text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_14px_28px_rgba(15,23,42,0.16)] backdrop-blur-xl'
+              )}
+              onClick={onOpenCreate}
+              aria-label="Create task"
+              {...createHoverProps}
+            >
+              <Plus className="h-4 w-4" />
             </Button>
-          ) : (
+          </motion.div>
+          <motion.div
+            animate={
+              dateSemanticHovered
+                ? { opacity: 1, scale: 0.95 }
+                : { opacity: 1, scale: 1 }
+            }
+            transition={{ duration: 0.18, ease: 'easeOut' }}
+            className="relative"
+            {...dateHoverProps}
+          >
+            {dateSemanticHovered ? (
+              <motion.div
+                layoutId="semantic-hover-header"
+                className="pointer-events-none absolute -inset-1 rounded-xl bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.18),rgba(56,189,248,0.08)_42%,transparent_72%)] blur-md"
+              />
+            ) : null}
             <DateRangePicker
               value={dateFilter}
               onChange={onDateFilterChange}
-              placeholder="Date"
+              open={datePickerOpen}
+              onOpenChange={onDatePickerOpenChange}
+              placeholder="Filter by date"
               referenceNow={referenceNow}
-              className="w-[8.75rem] justify-start overflow-hidden [&>span:first-of-type]:truncate"
+              compact
+              className={cn(
+                'h-9 w-9 transition-all',
+                dateSemanticHovered && 'border-white/14 bg-white/[0.08] text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_14px_28px_rgba(15,23,42,0.16)] backdrop-blur-xl'
+              )}
             />
-          )}
-          <Button
-            variant="outline"
-            size="icon"
-            className="relative h-9 w-9"
-            onClick={onOpenHistory}
-            aria-label="Open history"
+          </motion.div>
+          <motion.div
+            animate={
+              historySemanticHovered
+                ? { opacity: 1, scale: 0.95 }
+                : { opacity: 1, scale: 1 }
+            }
+            transition={{ duration: 0.18, ease: 'easeOut' }}
+            className="relative"
           >
-            <Clock3 className="h-4 w-4" />
-            {historyCount > 0 ? (
-              <span className="absolute -top-1 -right-1 flex min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-medium text-primary-foreground">
-                {historyCount > 99 ? '99+' : historyCount}
-              </span>
+            {historySemanticHovered ? (
+              <motion.div
+                layoutId="semantic-hover-header"
+                className="pointer-events-none absolute -inset-1 rounded-xl bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.18),rgba(56,189,248,0.08)_42%,transparent_72%)] blur-md"
+              />
             ) : null}
-            <span className="sr-only">
-              History {historyCount > 0 ? `(${historyCount})` : ''}
-            </span>
-          </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className={cn(
+                'relative h-9 w-9 transition-all',
+                historySemanticHovered && 'border-white/14 bg-white/[0.08] text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_14px_28px_rgba(15,23,42,0.16)] backdrop-blur-xl'
+              )}
+              onClick={onOpenHistory}
+              aria-label="Open history"
+              aria-pressed={historyOpen}
+              {...historyHoverProps}
+            >
+              <Clock3 className="h-4 w-4" />
+              {historyCount > 0 ? (
+                <span className="absolute -top-1 -right-1 flex min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-medium text-primary-foreground">
+                  {historyCount > 99 ? '99+' : historyCount}
+                </span>
+              ) : null}
+              <span className="sr-only">
+                History {historyCount > 0 ? `(${historyCount})` : ''}
+              </span>
+            </Button>
+          </motion.div>
           <div className="hidden sm:block">
             <ViewSwitcher
               viewMode={viewMode}
@@ -202,8 +301,6 @@ export function TaskFlowPageClient({
     configured: assistantConfigured,
     disabledMessage: assistantDisabledMessage,
   });
-  const [historyOpen, setHistoryOpen] = useState(false);
-  const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [createValues, setCreateValues] = useState(() => createTaskEditorValues());
 
   const isMobile = useIsMobile();
@@ -227,6 +324,10 @@ export function TaskFlowPageClient({
     viewMode,
     assistantOpen,
     dateFilter,
+    datePickerOpen,
+    historyOpen,
+    createDialogOpen,
+    hoveredTarget,
     totalCount,
     inProgressCount,
     doneCount,
@@ -235,14 +336,32 @@ export function TaskFlowPageClient({
   } = state;
 
   const filteredActiveTasks = filterTasksByDate(activeTasks, dateFilter, clock?.now ?? null);
+  const hoveredTaskId = hoveredTarget?.kind === 'task-card' ? hoveredTarget.taskId : null;
+  const hoveredLineageWorldId =
+    hoveredTarget?.kind === 'lineage-entry' ? hoveredTarget.worldId : null;
+  const hoveredHeaderActionId =
+    hoveredTarget?.kind === 'header-action' ? hoveredTarget.actionId : null;
   const canCreateTask = createValues.title.trim().length > 0;
+  const handleResetSession = async () => {
+    if (typeof window !== 'undefined') {
+      const confirmed = window.confirm(
+        'Reset the local TaskFlow session? This clears lineage history, assistant chat, and returns tasks to the seeded state.',
+      );
+
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    await assistant.resetSession();
+  };
 
   return (
     <div className="flex h-screen bg-background">
       <Dialog
         open={createDialogOpen}
         onOpenChange={(open) => {
-          setCreateDialogOpen(open);
+          actions.setCreateDialogOpen(open);
 
           if (!open) {
             setCreateValues(createTaskEditorValues());
@@ -266,7 +385,7 @@ export function TaskFlowPageClient({
               }
 
               actions.createTask(toTaskDraft(createValues));
-              setCreateDialogOpen(false);
+              actions.setCreateDialogOpen(false);
               setCreateValues(createTaskEditorValues());
             }}
           >
@@ -282,7 +401,7 @@ export function TaskFlowPageClient({
                 type="button"
                 variant="ghost"
                 onClick={() => {
-                  setCreateDialogOpen(false);
+                  actions.setCreateDialogOpen(false);
                   setCreateValues(createTaskEditorValues());
                 }}
               >
@@ -352,13 +471,18 @@ export function TaskFlowPageClient({
           inProgressCount={inProgressCount}
           doneCount={doneCount}
           dateFilter={dateFilter}
+          datePickerOpen={datePickerOpen}
+          createDialogOpen={createDialogOpen}
           deletedCount={deletedCount}
+          hoveredHeaderActionId={hoveredHeaderActionId}
           historyCount={historyEntries.length}
+          historyOpen={historyOpen}
           referenceNow={clock?.now ?? null}
           viewMode={viewMode}
           onDateFilterChange={actions.setDateFilter}
-          onOpenCreate={() => setCreateDialogOpen(true)}
-          onOpenHistory={() => setHistoryOpen(true)}
+          onDatePickerOpenChange={actions.setDatePickerOpen}
+          onOpenCreate={() => actions.setCreateDialogOpen(true)}
+          onOpenHistory={() => actions.setHistoryOpen(true)}
           onViewModeChange={actions.changeView}
         />
 
@@ -375,6 +499,7 @@ export function TaskFlowPageClient({
               <KanbanView
                 tasks={filteredActiveTasks}
                 selectedTaskId={selectedTaskId}
+                hoveredTaskId={hoveredTaskId}
                 onSelectTask={(taskId) => actions.selectTask(taskId)}
                 onMoveTask={actions.moveTask}
               />
@@ -395,6 +520,7 @@ export function TaskFlowPageClient({
                   <TodoView
                     tasks={filteredActiveTasks}
                     selectedTaskId={selectedTaskId}
+                    hoveredTaskId={hoveredTaskId}
                     onSelectTask={(taskId) => actions.selectTask(taskId)}
                   />
                 </main>
@@ -416,6 +542,7 @@ export function TaskFlowPageClient({
                   <TableView
                     tasks={filteredActiveTasks}
                     selectedTaskId={selectedTaskId}
+                    hoveredTaskId={hoveredTaskId}
                     onSelectTask={(taskId) => actions.selectTask(taskId)}
                   />
                 </main>
@@ -436,6 +563,7 @@ export function TaskFlowPageClient({
                 <main className="px-4 py-4 sm:px-6 sm:py-6">
                   <TrashView
                     tasks={deletedTasks}
+                    hoveredTaskId={hoveredTaskId}
                     onRestore={actions.restoreTask}
                     onPermanentlyDelete={actions.permanentlyDeleteTask}
                     onEmptyTrash={actions.emptyTrash}
@@ -461,14 +589,15 @@ export function TaskFlowPageClient({
                 <LineagePanel
                   activeBranchName={activeBranchName}
                   entries={historyEntries}
-                  onClose={() => setHistoryOpen(false)}
+                  hoveredWorldId={hoveredLineageWorldId}
+                  onClose={() => actions.setHistoryOpen(false)}
                 />
               </div>
             </motion.aside>
           ) : null}
         </AnimatePresence>
       ) : (
-        <Sheet open={historyOpen} onOpenChange={setHistoryOpen}>
+        <Sheet open={historyOpen} onOpenChange={actions.setHistoryOpen}>
           <SheetContent
             side={isMobile ? 'bottom' : 'right'}
             className={isMobile ? 'h-[85vh] rounded-t-xl p-0' : 'w-[360px] max-w-full p-0'}
@@ -481,7 +610,8 @@ export function TaskFlowPageClient({
             <LineagePanel
               activeBranchName={activeBranchName}
               entries={historyEntries}
-              onClose={() => setHistoryOpen(false)}
+              hoveredWorldId={hoveredLineageWorldId}
+              onClose={() => actions.setHistoryOpen(false)}
             />
           </SheetContent>
         </Sheet>
@@ -500,9 +630,11 @@ export function TaskFlowPageClient({
               <div className="h-full w-[360px] overflow-hidden">
                 <AssistantPanel
                   onClose={() => actions.toggleAssistant(false)}
+                  onResetSession={handleResetSession}
                   messages={assistant.messages}
                   onSubmit={assistant.sendMessage}
                   isLoading={assistant.isLoading}
+                  isResetting={assistant.isResetting}
                   disabled={assistant.disabled}
                   disabledMessage={assistant.disabledMessage}
                   onApproveDelete={assistant.approveDelete}
@@ -525,9 +657,11 @@ export function TaskFlowPageClient({
             </span>
             <AssistantPanel
               onClose={() => actions.toggleAssistant(false)}
+              onResetSession={handleResetSession}
               messages={assistant.messages}
               onSubmit={assistant.sendMessage}
               isLoading={assistant.isLoading}
+              isResetting={assistant.isResetting}
               disabled={assistant.disabled}
               disabledMessage={assistant.disabledMessage}
               onApproveDelete={assistant.approveDelete}

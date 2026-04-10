@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useChat } from '@ai-sdk/react';
 import {
   DefaultChatTransport,
@@ -40,11 +40,13 @@ function createDisabledMessages(message: string): TaskFlowAssistantUIMessage[] {
 export type UseTaskFlowAssistantResult = {
   messages: TaskFlowAssistantUIMessage[];
   isLoading: boolean;
+  isResetting: boolean;
   disabled: boolean;
   disabledMessage?: string;
   sendMessage: (message: string) => Promise<void>;
   approveDelete: (toolCallId: string, input: TaskFlowAssistantUITools['delete_task']['input']) => Promise<void>;
   denyDelete: (toolCallId: string, input: TaskFlowAssistantUITools['delete_task']['input']) => Promise<void>;
+  resetSession: () => Promise<void>;
 };
 
 export function useTaskFlowAssistant(options: {
@@ -53,6 +55,7 @@ export function useTaskFlowAssistant(options: {
 }): UseTaskFlowAssistantResult {
   const controller = useMemo(() => getTaskFlowRuntimeController(), []);
   const chatRef = useRef<ReturnType<typeof useChat<TaskFlowAssistantUIMessage>> | null>(null);
+  const [isResetting, setIsResetting] = useState(false);
   const controllerSnapshot = useSyncExternalStore(
     controller.subscribe,
     controller.getSnapshot,
@@ -159,12 +162,15 @@ export function useTaskFlowAssistant(options: {
 
   const disabled =
     !options.configured ||
-    !controllerSnapshot.ready;
+    !controllerSnapshot.ready ||
+    isResetting;
 
   const disabledMessage =
     !options.configured
       ? options.disabledMessage
-      : !controllerSnapshot.ready
+      : isResetting
+        ? 'Resetting the local TaskFlow session...'
+        : !controllerSnapshot.ready
         ? 'Assistant is preparing the local TaskFlow runtime...'
         : undefined;
 
@@ -175,6 +181,7 @@ export function useTaskFlowAssistant(options: {
   return {
     messages: visibleMessages,
     isLoading: chat.status === 'submitted' || chat.status === 'streaming',
+    isResetting,
     disabled,
     disabledMessage,
     sendMessage: async (message: string) => {
@@ -216,6 +223,23 @@ export function useTaskFlowAssistant(options: {
       const nextMessages = dropToolCallById(chat.messages, toolCallId);
       chat.setMessages(nextMessages);
       controller.saveAssistantMessages(nextMessages);
+    },
+    resetSession: async () => {
+      if (isResetting) {
+        return;
+      }
+
+      setIsResetting(true);
+
+      try {
+        await chat.stop();
+        chat.clearError();
+        chat.setMessages([]);
+        controller.clearAssistantMessages();
+        await controller.resetSession();
+      } finally {
+        setIsResetting(false);
+      }
     },
   };
 }

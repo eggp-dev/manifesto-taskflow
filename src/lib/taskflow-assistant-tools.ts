@@ -4,6 +4,7 @@ import { z } from 'zod';
 const taskStatusSchema = z.enum(['todo', 'in-progress', 'review', 'done']);
 const taskPrioritySchema = z.enum(['low', 'medium', 'high']);
 const taskHistoryKindSchema = z.enum(['genesis', 'seed', 'ui', 'mutation']);
+const headerActionIdSchema = z.enum(['create-task', 'date-filter', 'history']);
 const lineageMatchSchema = z.object({
   worldId: z.string(),
   branchName: z.string(),
@@ -13,6 +14,42 @@ const lineageMatchSchema = z.object({
   createdAt: z.number(),
   isHead: z.boolean(),
   isVisible: z.boolean(),
+});
+const hoveredTargetSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('task-card'),
+    label: z.string(),
+    capturedAt: z.number(),
+    availableActions: z.array(z.string()),
+    taskId: z.string(),
+  }),
+  z.object({
+    kind: z.literal('header-action'),
+    label: z.string(),
+    capturedAt: z.number(),
+    availableActions: z.array(z.string()),
+    actionId: headerActionIdSchema,
+  }),
+  z.object({
+    kind: z.literal('lineage-entry'),
+    label: z.string(),
+    capturedAt: z.number(),
+    availableActions: z.array(z.string()),
+    worldId: z.string(),
+    branchName: z.string(),
+    actionName: z.string(),
+    summary: z.string(),
+  }),
+]);
+const hoveredInspectionSchema = z.object({
+  title: z.string(),
+  description: z.string(),
+  metadata: z.array(
+    z.object({
+      label: z.string(),
+      value: z.string(),
+    }),
+  ),
 });
 
 export const taskFlowToolOutputSchema = z.object({
@@ -24,6 +61,9 @@ export const taskFlowToolOutputSchema = z.object({
   skipped: z.boolean().optional(),
   snapshotDiff: z.array(z.string()).optional(),
   matches: z.array(lineageMatchSchema).optional(),
+  hoveredTarget: hoveredTargetSchema.optional(),
+  inspection: hoveredInspectionSchema.optional(),
+  uiAction: z.string().optional(),
 });
 
 export const taskFlowCreateTaskInputSchema = z.object({
@@ -72,6 +112,8 @@ export const taskFlowSearchLineageInputSchema = z.object({
   onlyHeads: z.boolean().optional(),
   limit: z.number().int().positive().max(20).optional(),
 });
+export const taskFlowInspectHoveredTargetInputSchema = z.object({});
+export const taskFlowActivateHoveredTargetInputSchema = z.object({});
 
 export const taskFlowAgentContextSchema = z.object({
   branchName: z.string().nullable(),
@@ -90,6 +132,7 @@ export const taskFlowAgentContextSchema = z.object({
       deletedAt: z.string().nullable(),
     })
     .nullable(),
+  hoveredTarget: hoveredTargetSchema.nullable(),
   snapshot: z.object({
     data: z.record(z.string(), z.unknown()),
     computed: z.record(z.string(), z.unknown()),
@@ -210,6 +253,18 @@ export function createTaskFlowAssistantTools() {
       description:
         'Search TaskFlow lineage history by keyword or filters. Use when the user asks what changed, what happened before, recent history, lineage, branch history, or prior task actions.',
       inputSchema: taskFlowSearchLineageInputSchema,
+      outputSchema: taskFlowToolOutputSchema,
+    }),
+    inspect_hovered_target: tool({
+      description:
+        'Inspect the currently hovered semantic UI target. Use when the user says "this", "that", or asks what the hovered task, button, or lineage entry is.',
+      inputSchema: taskFlowInspectHoveredTargetInputSchema,
+      outputSchema: taskFlowToolOutputSchema,
+    }),
+    activate_hovered_target: tool({
+      description:
+        'Activate the currently hovered semantic UI target. Use when the user says "open this", "select this", or wants to trigger the hovered header button. Hovered lineage entries are read-only and cannot be activated.',
+      inputSchema: taskFlowActivateHoveredTargetInputSchema,
       outputSchema: taskFlowToolOutputSchema,
     }),
   };

@@ -18,6 +18,13 @@ const baseContext: TaskFlowAgentContext = {
     tags: ['assistant'],
     deletedAt: null,
   },
+  hoveredTarget: {
+    kind: 'task-card',
+    taskId: 'task-1',
+    label: 'Wire assistant',
+    capturedAt: 1,
+    availableActions: ['inspect_hovered_target', 'activate_hovered_target'],
+  },
   snapshot: {
     data: {
       tasks: [
@@ -100,9 +107,14 @@ describe('taskflow assistant prompt', () => {
     );
 
     expect(prompt).toContain('Choose the tool that best matches the user request.');
+    expect(prompt).toContain('resolve that reference to hoveredTarget first');
+    expect(prompt).toContain('do not ask the user which item they mean');
     expect(prompt).toContain('TaskFlow');
     expect(prompt).toContain('domain TaskFlow');
     expect(prompt).toContain('"selectedTaskId": "task-1"');
+    expect(prompt).toContain('Hovered target summary: task-card "Wire assistant"');
+    expect(prompt).toContain('Current hovered target:');
+    expect(prompt).toContain('"kind": "task-card"');
     expect(prompt).toContain('"visibleWorldId": "world-1"');
     expect(prompt).toContain('"actionName": "createTask"');
   });
