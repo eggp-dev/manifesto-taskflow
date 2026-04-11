@@ -1,10 +1,10 @@
 # TaskFlow UI Contract
 
-This document defines the state and action contract that the TaskFlow UI consumes today. For the higher-level Manifesto integration story, see [`ARCHITECTURE.md`](./ARCHITECTURE.md).
+This document describes the UI-facing state and action contract. For the system-level integration story, see [ARCHITECTURE.md](./ARCHITECTURE.md).
 
 ## Core Types
 
-The main app-facing types live in [`src/types/taskflow.ts`](../src/types/taskflow.ts):
+From [`src/types/taskflow.ts`](../src/types/taskflow.ts):
 
 - `Task`
 - `TaskDraft`
@@ -15,20 +15,20 @@ The main app-facing types live in [`src/types/taskflow.ts`](../src/types/taskflo
 - `TaskFlowClockStamp`
 - `TaskFlowHistoryEntry`
 
-Assistant-facing contract types live in [`src/types/taskflow-assistant.ts`](../src/types/taskflow-assistant.ts), including:
+From [`src/types/taskflow-assistant.ts`](../src/types/taskflow-assistant.ts):
 
 - `TaskFlowAgentContext`
 - `TaskFlowHoveredTarget`
 - `TaskFlowAssistantUIMessage`
 
-WebMCP-facing contract types live in [`src/types/taskflow-webmcp.ts`](../src/types/taskflow-webmcp.ts), including:
+From [`src/types/taskflow-webmcp.ts`](../src/types/taskflow-webmcp.ts):
 
 - `TaskFlowWebMcpContext`
 - `TaskFlowWebMcpNotification`
 - `TaskFlowWebMcpDeleteInput`
 - `TaskFlowWebMcpToolResult`
 
-## Runtime-Backed View State
+## `useTaskFlow`
 
 [`useTaskFlow`](../src/hooks/useTaskFlow.ts) returns:
 
@@ -36,43 +36,47 @@ WebMCP-facing contract types live in [`src/types/taskflow-webmcp.ts`](../src/typ
 - `state: TaskFlowViewState | null`
 - `actions: TaskFlowActions`
 
-`TaskFlowViewState` is assembled by [`TaskFlowRuntimeController`](../src/lib/taskflow-runtime-controller.ts) from the live Manifesto snapshot plus controller-owned UI state.
+## Runtime-Backed View State
 
-The runtime-backed portion of the view state includes:
+Base state:
 
-- base state: `tasks`, `selectedTaskId`, `viewMode`, `assistantOpen`, `clock`
-- derived task projections:
-  - `activeTasks`
-  - `deletedTasks`
-  - `todoTasks`
-  - `inProgressTasks`
-  - `reviewTasks`
-  - `doneTasks`
-  - `schedulableTasks`
-  - `dueTodayTasks`
-  - `overdueTasks`
-  - `selectedTask`
-- derived counts:
-  - `totalCount`
-  - `todoCount`
-  - `inProgressCount`
-  - `reviewCount`
-  - `doneCount`
-  - `deletedCount`
-  - `dueTodayCount`
-  - `overdueCount`
-- lineage-backed context:
-  - `historyEntries`
-  - `activeBranchName`
-  - `visibleWorldId`
+- `tasks`
+- `selectedTaskId`
+- `viewMode`
+- `assistantOpen`
+- `clock`
 
-This state is snapshot-driven and remains aligned with the activated MEL domain.
+Derived task views:
+
+- `activeTasks`
+- `deletedTasks`
+- `todoTasks`
+- `inProgressTasks`
+- `reviewTasks`
+- `doneTasks`
+- `schedulableTasks`
+- `dueTodayTasks`
+- `overdueTasks`
+- `selectedTask`
+
+Derived counts:
+
+- `totalCount`
+- `todoCount`
+- `inProgressCount`
+- `reviewCount`
+- `doneCount`
+- `deletedCount`
+- `dueTodayCount`
+- `overdueCount`
+
+Lineage-backed context:
+
+- `historyEntries`
+- `activeBranchName`
+- `visibleWorldId`
 
 ## Ephemeral UI Session State
-
-Some UI state is intentionally not lineaged and not persisted as domain snapshot state.
-
-Ephemeral session fields exposed through `TaskFlowViewState`:
 
 - `dateFilter`
 - `hoveredTarget`
@@ -80,18 +84,9 @@ Ephemeral session fields exposed through `TaskFlowViewState`:
 - `createDialogOpen`
 - `datePickerOpen`
 
-Important boundary:
+`hoveredTarget` is local assistant-grounding state only. It is not written to MEL or Lineage and is cleared on session reset.
 
-- `hoveredTarget` is semantic assistant grounding state only
-- it is not written to MEL state
-- it is not stored in lineage worlds
-- it is cleared on session reset
-
-Hover registration itself is handled through [`useTaskFlowSemanticHoverTarget`](../src/hooks/useTaskFlowSemanticHoverTarget.ts).
-
-## UI Action Surface
-
-The UI writes through `TaskFlowActions`, exposed from [`useTaskFlow`](../src/hooks/useTaskFlow.ts).
+## Action Surface
 
 Lineaged actions:
 
@@ -113,71 +108,46 @@ Client-only UI actions:
 - `setCreateDialogOpen(open)`
 - `setDatePickerOpen(open)`
 
-Contract rule:
-
-- lineaged actions commit through the client runtime and appear in history
-- client-only UI actions do not create lineage worlds
+Lineaged actions commit through the client runtime and appear in history. Client-only UI actions do not create lineage worlds.
 
 ## Assistant Contract
 
-[`useTaskFlowAssistant`](../src/hooks/useTaskFlowAssistant.ts) is the assistant-facing UI seam.
+Client responsibilities:
 
-Client responsibility:
-
-- prepare the latest `TaskFlowAgentContext`
+- build `TaskFlowAgentContext`
 - execute tool calls against the local runtime
 - persist assistant chat locally
-- gate `delete_task` behind explicit confirmation
+- require explicit confirmation for `delete_task`
 
-Server responsibility:
+Server responsibilities:
 
-- validate the request payload
-- construct the system prompt
+- validate request payload
+- build the prompt
 - register tool schemas
 - stream model output and tool calls
 
-The assistant tool surface is:
+Assistant tool surface:
 
-- CRUD tools:
-  - `create_task`
-  - `update_task`
-  - `move_task`
-  - `delete_task`
-  - `restore_task`
-  - `select_task`
-- lineage read tool:
-  - `search_lineage`
-  - `task_brief_list`
-- hover tools:
-  - `inspect_hovered_target`
-  - `activate_hovered_target`
+- `create_task`
+- `update_task`
+- `move_task`
+- `delete_task`
+- `restore_task`
+- `select_task`
+- `search_lineage`
+- `task_brief_list`
+- `inspect_hovered_target`
+- `activate_hovered_target`
 
-`TaskFlowAgentContext` includes:
-
-- raw snapshot data/computed/system
-- active and deleted task summaries
-- counts
-- recent history
-- causal graph
-- selected task
-- hovered semantic target
+`TaskFlowAgentContext` includes snapshot payload, task summaries, counts, recent history, causal graph, selected task, and hovered target.
 
 ## WebMCP Contract
 
-[`useTaskFlowWebMcp`](../src/hooks/useTaskFlowWebMcp.ts) boots a browser-side WebMCP bridge over the same controller contract.
+Internal ownership:
 
-Client responsibility:
-
-- feature-detect `navigator.modelContext`
-- retry bridge startup after later user activation if `modelContext` was unavailable on first mount
-- register imperative WebMCP tools for the current tab through `registerTool(..., { signal })`
-- execute WebMCP tool calls against the local runtime
-
-Internal ownership is split explicitly:
-
-- [`TaskFlowToolGateway`](../src/lib/taskflow-tool-gateway.ts) is the shared runtime-facing tool seam
-- [`taskflow-webmcp-service.ts`](../src/lib/taskflow-webmcp-service.ts) owns lifecycle, registration ownership, and debug state
-- [`webmcp-host-adapter.ts`](../src/lib/webmcp-host-adapter.ts) owns `navigator.modelContext`
+- [`TaskFlowToolGateway`](../src/lib/taskflow-tool-gateway.ts): shared runtime-facing tool seam
+- [`taskflow-webmcp-service.ts`](../src/lib/taskflow-webmcp-service.ts): lifecycle and debug state
+- [`webmcp-host-adapter.ts`](../src/lib/webmcp-host-adapter.ts): `navigator.modelContext`
 
 WebMCP tool surface:
 
@@ -193,55 +163,22 @@ WebMCP tool surface:
 - `inspect_hovered_target`
 - `activate_hovered_target`
 
-`TaskFlowWebMcpContext` includes:
+`TaskFlowWebMcpContext` contains `contextVersion`, full `TaskFlowAgentContext`, and `uiState`.
 
-- `contextVersion`
-- the full `TaskFlowAgentContext` payload
-- non-lineaged UI state under `uiState`
+`TaskFlowWebMcpNotification` contains `contextVersion`, selection, hover, counts, branch/world ids, and UI session flags.
 
-`TaskFlowWebMcpNotification` is the compact invalidation payload. It contains:
+WebMCP-specific rules:
 
-- `contextVersion`
-- selected task id
-- hovered target
-- counts
-- branch and visible world ids
-- UI session flags
-
-WebMCP-specific behavior:
-
-- `delete_task` uses a two-step confirmation handshake with `confirmed?: boolean`
+- `delete_task` uses a two-step confirmation handshake
 - `get_taskflow_context` is the authoritative host-facing read seam
-- tool registrations are long-lived and self-owned by the bridge; they are not re-registered on every runtime state change
-- WebMCP activation never moves state ownership off the client runtime
-- `window.__taskflowWebMcp` is a dev inspection aid owned by the service, not part of the product contract
+- tool registrations are long-lived and not refreshed on each state change
+- `window.__taskflowWebMcp` is a dev aid, not a product contract
 
-## Component Expectations
-
-[`TaskFlowPageClient`](../src/components/taskflow/TaskFlowPageClient.tsx) composes the application around this contract.
-
-View components:
-
-- Todo, Kanban, and Table consume filtered active tasks plus selection state
-- Trash consumes deleted tasks and destructive actions
-- Task detail consumes the selected task and save/delete callbacks
-
-Assistant components:
-
-- the assistant panel consumes live `TaskFlowAssistantUIMessage[]`
-- tool cards render step state, results, lineage matches, inspections, and collapsible snapshot diffs
-- hovered references can be resolved to tasks, header actions, or lineage entries
-
-History components:
-
-- `LineagePanel` consumes `historyEntries`, active branch information, and the currently hovered lineage world
-- it behaves as a read-only explorer, not a restore or branch-management UI
-
-## Explicit Boundaries
+## Boundaries
 
 - There is no server-owned canonical runtime.
 - There is no shared persistence or collaborative state.
 - Assistant operations are grounded in the local client runtime only.
 - WebMCP operations are grounded in the same local client runtime only.
-- Hover context is ephemeral and local.
-- The assistant cannot restore worlds, switch branches, or directly activate lineage entries.
+- Hover context is local and ephemeral.
+- Assistant and WebMCP do not restore worlds or switch branches.
