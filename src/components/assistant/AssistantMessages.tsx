@@ -21,6 +21,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type {
+  TaskFlowAgentTaskSummary,
   TaskFlowLineageMatch,
   TaskFlowHoveredInspection,
   TaskFlowAssistantToolName,
@@ -56,6 +57,7 @@ const TOOL_LABELS: Record<TaskFlowAssistantToolName, string> = {
   restore_task: 'Restore task',
   select_task: 'Select task',
   search_lineage: 'Search lineage',
+  task_brief_list: 'Task brief list',
   inspect_hovered_target: 'Inspect hover',
   activate_hovered_target: 'Activate hover',
 };
@@ -155,6 +157,25 @@ function getToolPreview(
 
       return 'Searching lineage history';
     }
+    case 'task_brief_list': {
+      const query = getStringField(input, 'query');
+      const assignee = getStringField(input, 'assignee');
+      const status = getStringField(input, 'status');
+
+      if (assignee) {
+        return `Listing tasks assigned to "${assignee}"`;
+      }
+
+      if (status) {
+        return `Listing tasks in ${status}`;
+      }
+
+      if (query) {
+        return `Listing tasks matching "${query}"`;
+      }
+
+      return 'Listing task briefs';
+    }
     case 'inspect_hovered_target': {
       const label = getHoveredTargetLabel(output);
       return label ? `Inspecting "${label}"` : 'Inspecting the hovered target';
@@ -187,6 +208,50 @@ function InspectionSection({ inspection }: { inspection: TaskFlowHoveredInspecti
             ))}
           </div>
         ) : null}
+      </div>
+    </div>
+  );
+}
+
+function TaskBriefListSection({ tasks }: { tasks: TaskFlowAgentTaskSummary[] }) {
+  if (tasks.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="mt-3 rounded-[14px] border border-white/7 bg-[#121212] px-3 py-2.5">
+      <p className="text-[10px] font-medium tracking-[0.16em] text-white/38 uppercase">
+        Task briefs
+      </p>
+      <div className="mt-2.5 space-y-2">
+        {tasks.map((task) => (
+          <div
+            key={task.id}
+            className="rounded-[12px] border border-white/7 bg-white/[0.02] px-2.5 py-2"
+          >
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-white/44">
+              <span className="font-mono text-white/40" title={task.id}>
+                {formatIdentifier(task.id)}
+              </span>
+              <span>{task.status}</span>
+              <span>{task.priority}</span>
+              {task.assignee ? <span>{task.assignee}</span> : null}
+              {task.deletedAt ? <span className="text-amber-200/90">deleted</span> : null}
+            </div>
+            <p className="mt-1.5 text-sm leading-5 text-white/82">{task.title}</p>
+            <div className="mt-1.5 flex flex-wrap gap-1.5 text-[11px] text-white/42">
+              {task.tags.map((tag) => (
+                <span
+                  key={`${task.id}:${tag}`}
+                  className="rounded-full border border-white/8 bg-white/[0.03] px-2 py-0.5"
+                >
+                  {tag}
+                </span>
+              ))}
+              {task.tags.length === 0 ? <span>no tags</span> : null}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -542,6 +607,7 @@ function ToolCard({
               <InspectionSection inspection={output.inspection} />
             ) : null}
             <LineageMatchesSection matches={output?.matches ?? []} />
+            <TaskBriefListSection tasks={output?.taskBriefList ?? []} />
             <TraceSection lines={output?.snapshotDiff ?? []} />
           </>
         ) : null}

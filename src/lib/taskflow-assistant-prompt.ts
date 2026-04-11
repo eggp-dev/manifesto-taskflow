@@ -41,6 +41,7 @@ export async function buildTaskFlowAssistantSystemPrompt(
     'Operate this TaskFlow runtime using the provided tools only.',
     'Choose the tool that best matches the user request. Do not call tools that are unrelated to the request.',
     'Use search_lineage when the user asks about prior changes, history, lineage, or what happened before.',
+    'Use task_brief_list when the user asks which tasks match an assignee, status, priority, tag, or free-text search.',
     'If hoveredTarget is present and the user refers to "this", "that", "이거", "그거", "이건", or "이 버튼", resolve that reference to hoveredTarget first.',
     'When hoveredTarget is present and compatible with the request, do not ask the user which item they mean.',
     'Prefer inspect_hovered_target or activate_hovered_target for hoveredTarget requests before asking clarifying questions.',
