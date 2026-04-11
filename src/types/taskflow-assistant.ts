@@ -135,6 +135,7 @@ export interface TaskFlowToolOutput {
   skipped?: boolean;
   snapshotDiff?: string[];
   matches?: TaskFlowLineageMatch[];
+  taskBriefList?: TaskFlowAgentTaskSummary[];
   hoveredTarget?: TaskFlowHoveredTarget;
   inspection?: TaskFlowHoveredInspection;
   uiAction?: string;
@@ -187,6 +188,16 @@ export interface TaskFlowSearchLineageInput {
   limit?: number;
 }
 
+export interface TaskFlowTaskBriefListInput {
+  query?: string;
+  assignee?: string;
+  status?: TaskStatus;
+  priority?: TaskPriority;
+  tag?: string;
+  includeDeleted?: boolean;
+  limit?: number;
+}
+
 export type TaskFlowInspectHoveredTargetInput = Record<string, never>;
 
 export type TaskFlowActivateHoveredTargetInput = Record<string, never>;
@@ -231,6 +242,10 @@ export interface TaskFlowAssistantToolMap {
     input: TaskFlowSearchLineageInput;
     output: TaskFlowToolOutput;
   };
+  task_brief_list: {
+    input: TaskFlowTaskBriefListInput;
+    output: TaskFlowToolOutput;
+  };
   inspect_hovered_target: {
     input: TaskFlowInspectHoveredTargetInput;
     output: TaskFlowToolOutput;
@@ -259,6 +274,7 @@ const TASKFLOW_ASSISTANT_TOOL_NAMES = [
   'restore_task',
   'select_task',
   'search_lineage',
+  'task_brief_list',
   'inspect_hovered_target',
   'activate_hovered_target',
 ] as const satisfies readonly TaskFlowAssistantToolName[];

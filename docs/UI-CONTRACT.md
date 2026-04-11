@@ -140,6 +140,7 @@ The assistant tool surface is:
   - `select_task`
 - lineage read tool:
   - `search_lineage`
+  - `task_brief_list`
 - hover tools:
   - `inspect_hovered_target`
   - `activate_hovered_target`

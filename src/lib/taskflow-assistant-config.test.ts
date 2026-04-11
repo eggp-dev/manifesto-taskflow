@@ -107,6 +107,7 @@ describe('taskflow assistant prompt', () => {
     );
 
     expect(prompt).toContain('Choose the tool that best matches the user request.');
+    expect(prompt).toContain('Use task_brief_list when the user asks which tasks match');
     expect(prompt).toContain('resolve that reference to hoveredTarget first');
     expect(prompt).toContain('do not ask the user which item they mean');
     expect(prompt).toContain('TaskFlow');

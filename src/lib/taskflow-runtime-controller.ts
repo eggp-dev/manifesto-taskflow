@@ -39,6 +39,7 @@ import type {
   TaskFlowClockStamp,
   TaskFlowHistoryEntry,
   TaskFlowHistoryKind,
+  TaskPriority,
   TaskStatus,
   ViewMode,
 } from '@/types/taskflow';
@@ -501,6 +502,68 @@ function buildSnapshotDiff(
 
 function normalizeSearchValue(value: string): string {
   return value.trim().toLowerCase();
+}
+
+function searchTaskBriefs(args: {
+  activeTasks: Task[];
+  deletedTasks: Task[];
+  query?: string;
+  assignee?: string;
+  status?: TaskStatus;
+  priority?: TaskPriority;
+  tag?: string;
+  includeDeleted?: boolean;
+  limit?: number;
+}): Task[] {
+  const normalizedQuery = args.query ? normalizeSearchValue(args.query) : null;
+  const normalizedAssignee = args.assignee ? normalizeSearchValue(args.assignee) : null;
+  const normalizedTag = args.tag ? normalizeSearchValue(args.tag) : null;
+  const limit = Math.min(Math.max(args.limit ?? 8, 1), 20);
+  const tasks = args.includeDeleted
+    ? [...args.activeTasks, ...args.deletedTasks]
+    : args.activeTasks;
+
+  return tasks
+    .filter((task) => {
+      if (normalizedAssignee) {
+        const assignee = task.assignee ? normalizeSearchValue(task.assignee) : null;
+        if (assignee !== normalizedAssignee) {
+          return false;
+        }
+      }
+
+      if (args.status && task.status !== args.status) {
+        return false;
+      }
+
+      if (args.priority && task.priority !== args.priority) {
+        return false;
+      }
+
+      if (normalizedTag) {
+        const hasTag = task.tags.some((tag) => normalizeSearchValue(tag) === normalizedTag);
+        if (!hasTag) {
+          return false;
+        }
+      }
+
+      if (!normalizedQuery) {
+        return true;
+      }
+
+      return [
+        task.id,
+        task.title,
+        task.description ?? '',
+        task.assignee ?? '',
+        task.status,
+        task.priority,
+        ...task.tags,
+      ]
+        .map((value) => normalizeSearchValue(value))
+        .some((value) => value.includes(normalizedQuery));
+    })
+    .slice(0, limit);
 }
 
 function searchLineageEntries(args: {
@@ -1427,6 +1490,33 @@ export class TaskFlowRuntimeController {
                 ? `Found ${matches.length} lineage entr${matches.length === 1 ? 'y' : 'ies'}.`
                 : 'No lineage entries matched the requested search.',
             matches,
+          },
+        };
+      }
+      case 'task_brief_list': {
+        const taskBriefInput = input as TaskFlowAssistantUITools['task_brief_list']['input'];
+        const state = this.state;
+        const taskBriefs = searchTaskBriefs({
+          activeTasks: state?.activeTasks ?? [],
+          deletedTasks: state?.deletedTasks ?? [],
+          query: taskBriefInput.query,
+          assignee: taskBriefInput.assignee,
+          status: taskBriefInput.status,
+          priority: taskBriefInput.priority,
+          tag: taskBriefInput.tag,
+          includeDeleted: taskBriefInput.includeDeleted,
+          limit: taskBriefInput.limit,
+        }).map(toTaskFlowAgentTaskSummary);
+
+        return {
+          state: 'output-available',
+          output: {
+            ok: true,
+            summary:
+              taskBriefs.length > 0
+                ? `Found ${taskBriefs.length} task brief${taskBriefs.length === 1 ? '' : 's'}.`
+                : 'No tasks matched the requested filters.',
+            taskBriefList: taskBriefs,
           },
         };
       }

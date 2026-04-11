@@ -83,6 +83,10 @@ describe('taskflow runtime controller', () => {
       actionNames: ['selectTask'],
       limit: 3,
     });
+    const taskBriefListResult = await controller.executeAgentTool('task_brief_list', {
+      assignee: 'Codex',
+      status: 'review',
+    });
     const deleteResult = await controller.executeAgentTool('delete_task', {
       taskId,
     });
@@ -94,6 +98,7 @@ describe('taskflow runtime controller', () => {
     expect(moveResult.state).toBe('output-available');
     expect(selectResult.state).toBe('output-available');
     expect(searchResult.state).toBe('output-available');
+    expect(taskBriefListResult.state).toBe('output-available');
     expect(deleteResult.state).toBe('output-available');
     expect(restoreResult.state).toBe('output-available');
     expect(historyCountAfterCreate - historyCountBeforeCreate).toBe(1);
@@ -105,6 +110,14 @@ describe('taskflow runtime controller', () => {
     }
     if (searchResult.state === 'output-available') {
       expect(searchResult.output.matches?.some((match) => match.actionName === 'selectTask')).toBe(true);
+    }
+    if (taskBriefListResult.state === 'output-available') {
+      expect(taskBriefListResult.output.taskBriefList?.some((task) => task.id === taskId)).toBe(
+        true,
+      );
+      expect(taskBriefListResult.output.taskBriefList?.every((task) => task.assignee === 'Codex')).toBe(
+        true,
+      );
     }
 
     const state = controller.getSnapshot().state;

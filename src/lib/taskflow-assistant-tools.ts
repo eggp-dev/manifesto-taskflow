@@ -51,6 +51,17 @@ const hoveredInspectionSchema = z.object({
     }),
   ),
 });
+const taskBriefSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  description: z.string().nullable(),
+  status: taskStatusSchema,
+  priority: taskPrioritySchema,
+  assignee: z.string().nullable(),
+  dueDate: z.string().nullable(),
+  tags: z.array(z.string()),
+  deletedAt: z.string().nullable(),
+});
 
 export const taskFlowToolOutputSchema = z.object({
   ok: z.boolean(),
@@ -61,6 +72,7 @@ export const taskFlowToolOutputSchema = z.object({
   skipped: z.boolean().optional(),
   snapshotDiff: z.array(z.string()).optional(),
   matches: z.array(lineageMatchSchema).optional(),
+  taskBriefList: z.array(taskBriefSchema).optional(),
   hoveredTarget: hoveredTargetSchema.optional(),
   inspection: hoveredInspectionSchema.optional(),
   uiAction: z.string().optional(),
@@ -110,6 +122,15 @@ export const taskFlowSearchLineageInputSchema = z.object({
   kinds: z.array(taskHistoryKindSchema).optional(),
   branchName: z.string().trim().min(1).optional(),
   onlyHeads: z.boolean().optional(),
+  limit: z.number().int().positive().max(20).optional(),
+});
+export const taskFlowTaskBriefListInputSchema = z.object({
+  query: z.string().trim().min(1).optional(),
+  assignee: z.string().trim().min(1).optional(),
+  status: taskStatusSchema.optional(),
+  priority: taskPrioritySchema.optional(),
+  tag: z.string().trim().min(1).optional(),
+  includeDeleted: z.boolean().optional(),
   limit: z.number().int().positive().max(20).optional(),
 });
 export const taskFlowInspectHoveredTargetInputSchema = z.object({});
@@ -175,32 +196,8 @@ export const taskFlowAgentContextSchema = z.object({
     review: z.number().int().nonnegative(),
     done: z.number().int().nonnegative(),
   }),
-  activeTasks: z.array(
-    z.object({
-      id: z.string(),
-      title: z.string(),
-      description: z.string().nullable(),
-      status: taskStatusSchema,
-      priority: taskPrioritySchema,
-      assignee: z.string().nullable(),
-      dueDate: z.string().nullable(),
-      tags: z.array(z.string()),
-      deletedAt: z.string().nullable(),
-    }),
-  ),
-  deletedTasks: z.array(
-    z.object({
-      id: z.string(),
-      title: z.string(),
-      description: z.string().nullable(),
-      status: taskStatusSchema,
-      priority: taskPrioritySchema,
-      assignee: z.string().nullable(),
-      dueDate: z.string().nullable(),
-      tags: z.array(z.string()),
-      deletedAt: z.string().nullable(),
-    }),
-  ),
+  activeTasks: z.array(taskBriefSchema),
+  deletedTasks: z.array(taskBriefSchema),
   recentHistory: z.array(
     z.object({
       worldId: z.string(),
@@ -253,6 +250,12 @@ export function createTaskFlowAssistantTools() {
       description:
         'Search TaskFlow lineage history by keyword or filters. Use when the user asks what changed, what happened before, recent history, lineage, branch history, or prior task actions.',
       inputSchema: taskFlowSearchLineageInputSchema,
+      outputSchema: taskFlowToolOutputSchema,
+    }),
+    task_brief_list: tool({
+      description:
+        'List task briefs from the current TaskFlow snapshot. Use when the user asks which tasks match an assignee, status, priority, tag, or free-text query.',
+      inputSchema: taskFlowTaskBriefListInputSchema,
       outputSchema: taskFlowToolOutputSchema,
     }),
     inspect_hovered_target: tool({
