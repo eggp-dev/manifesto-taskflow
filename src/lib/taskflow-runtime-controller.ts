@@ -21,6 +21,7 @@ import {
 import taskflowSchema from '@/domain/taskflow.schema';
 import { createClockStamp } from '@/lib/taskflow-clock';
 import { TASK_FIXTURES } from '@/lib/taskflow-fixtures';
+import { TaskFlowToolGateway } from '@/lib/taskflow-tool-gateway';
 import {
   clearPersistedAssistantMessages,
   clearPersistedLineageState,
@@ -58,6 +59,13 @@ import type {
 import {
   toTaskFlowAgentTaskSummary,
 } from '@/types/taskflow-assistant';
+import type {
+  TaskFlowWebMcpContext,
+  TaskFlowWebMcpNotification,
+  TaskFlowWebMcpToolName,
+  TaskFlowWebMcpToolResult,
+} from '@/types/taskflow-webmcp';
+import type { WebMcpAgent } from '@/types/webmcp';
 import type { TaskFlowRuntimeDomain } from '@/types/taskflow-runtime';
 
 type TaskFlowRuntimeState = TaskFlowRuntimeDomain['state'] &
@@ -786,6 +794,18 @@ export class TaskFlowRuntimeController {
   private activeBranchName: string | null = null;
   private visibleWorldId: string | null = null;
   private agentCausalGraph: TaskFlowAgentCausalGraph | null = null;
+  private webMcpContextVersion = 0;
+  private readonly toolGateway = new TaskFlowToolGateway({
+    getAgentContext: () => this.buildAgentContext(),
+    getWebMcpUiState: () => ({
+      historyOpen: this.historyOpen,
+      createDialogOpen: this.createDialogOpen,
+      datePickerOpen: this.datePickerOpen,
+    }),
+    getWebMcpContextVersion: () => this.webMcpContextVersion,
+    executeAgentTool: async (toolName, input) => this.executeAgentToolInternal(toolName, input),
+    findTaskTitle: (taskId) => this.findTaskById(taskId)?.title ?? null,
+  });
   private controllerSnapshot: TaskFlowControllerSnapshot = {
     ready: false,
     state: null,
@@ -1041,6 +1061,22 @@ export class TaskFlowRuntimeController {
     };
   }
 
+  buildWebMcpContext(): TaskFlowWebMcpContext {
+    return this.toolGateway.buildWebMcpContext();
+  }
+
+  buildWebMcpNotification(): TaskFlowWebMcpNotification {
+    return this.toolGateway.buildWebMcpNotification();
+  }
+
+  async executeWebMcpTool(
+    toolName: TaskFlowWebMcpToolName,
+    input: Record<string, unknown>,
+    agent?: WebMcpAgent,
+  ): Promise<TaskFlowWebMcpToolResult> {
+    return this.toolGateway.executeWebMcpTool(toolName, input, agent);
+  }
+
   private buildHoveredInspection(target: TaskFlowHoveredTarget): TaskFlowHoveredInspection | null {
     switch (target.kind) {
       case 'task-card': {
@@ -1164,6 +1200,13 @@ export class TaskFlowRuntimeController {
   }
 
   async executeAgentTool<T extends TaskFlowAssistantToolName>(
+    toolName: T,
+    input: TaskFlowAssistantUITools[T]['input'],
+  ): Promise<TaskFlowAgentToolResult> {
+    return this.executeAgentToolInternal(toolName, input);
+  }
+
+  private async executeAgentToolInternal<T extends TaskFlowAssistantToolName>(
     toolName: T,
     input: TaskFlowAssistantUITools[T]['input'],
   ): Promise<TaskFlowAgentToolResult> {
@@ -1695,6 +1738,7 @@ export class TaskFlowRuntimeController {
   }
 
   private updateControllerSnapshot(): void {
+    this.webMcpContextVersion += 1;
     this.controllerSnapshot = {
       ready: this.ready,
       state: this.state,

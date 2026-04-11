@@ -10,20 +10,25 @@ TaskFlow is not meant to demonstrate a generic kanban app architecture. It is me
 - the UI renders directly from projected snapshot state
 - Lineage upgrades state transitions into visible continuity and history
 - assistant actions are routed through the same runtime contract as manual UI actions
+- WebMCP host calls are routed through the same runtime contract as manual UI actions
 - ephemeral UI context, such as semantic hover, is composed around the runtime instead of replacing it
 
 The important architectural question in this repo is therefore not just "how does the UI work?" but "how does a modern UI stay integrated with a Manifesto runtime without forking its own state model?"
 
 ## System Overview
 
-TaskFlow uses a client-owned Manifesto runtime as its source of truth. The browser activates the domain, applies lineage commits, derives the view model, and persists local state. The server route exists only to stream model responses and tool calls for the assistant. MEL defines the domain state, actions, and computed projections.
+TaskFlow uses a client-owned Manifesto runtime as its source of truth. The browser activates the domain, applies lineage commits, derives the view model, persists local state, and now also exposes a WebMCP tool surface over that same runtime. The server route exists only to stream model responses and tool calls for the in-app assistant. MEL defines the domain state, actions, and computed projections.
 
 Primary implementation seams:
 
 - [`TaskFlowPageClient`](../src/components/taskflow/TaskFlowPageClient.tsx)
 - [`useTaskFlow`](../src/hooks/useTaskFlow.ts)
 - [`useTaskFlowAssistant`](../src/hooks/useTaskFlowAssistant.ts)
+- [`useTaskFlowWebMcp`](../src/hooks/useTaskFlowWebMcp.ts)
 - [`TaskFlowRuntimeController`](../src/lib/taskflow-runtime-controller.ts)
+- [`TaskFlowToolGateway`](../src/lib/taskflow-tool-gateway.ts)
+- [`taskflow-webmcp-service.ts`](../src/lib/taskflow-webmcp-service.ts)
+- [`webmcp-host-adapter.ts`](../src/lib/webmcp-host-adapter.ts)
 - [`/api/assistant`](../src/app/api/assistant/route.ts)
 - [`taskflow.mel`](../src/domain/taskflow.mel)
 
@@ -40,19 +45,28 @@ TaskFlow demonstrates the following usage pattern for Manifesto in a product UI:
 
 In other words, the UI is not a parallel state machine with Manifesto bolted on the side. The UI is a consumer of Manifesto's projected state and a producer of Manifesto intents.
 
+The WebMCP path extends that same direction. It does not create a second browser-agent state model. It publishes the already-existing runtime contract to a browser host.
+
 ## High-Level Diagram
 
 ```mermaid
 flowchart LR
   UI["TaskFlowPageClient<br/>views + panels"] --> Hooks["useTaskFlow<br/>useTaskFlowAssistant"]
+  Hooks --> WebMcp["useTaskFlowWebMcp<br/>browser bridge bootstrap"]
   Hooks --> Controller["TaskFlowRuntimeController<br/>client source of truth"]
+  Controller --> Gateway["TaskFlowToolGateway<br/>shared tool seam"]
+  WebMcp --> Bridge["TaskFlowWebMcpService<br/>lifecycle + debug API"]
+  Bridge --> Adapter["WebMcpHostAdapter<br/>navigator.modelContext"]
+  Bridge --> Catalog["fixed WebMCP tool catalog"]
   Controller --> Runtime["Manifesto runtime<br/>with Lineage"]
   Controller --> Storage["localStorage<br/>lineage + assistant chat"]
+  Gateway --> Bridge
+  Adapter --> Host["WebMCP-capable browser host"]
   Hooks --> Route["/api/assistant<br/>server orchestration"]
   Route --> Model["OpenAI model"]
   Model --> Tools["tool calls streamed to client"]
   Tools --> Hooks
-  Hooks --> Controller
+  Hooks --> Gateway
 ```
 
 ## Runtime and State Ownership
@@ -69,6 +83,45 @@ The controller exposes a single view model consumed through [`useTaskFlow`](../s
 The page itself does not talk to Manifesto directly. [`TaskFlowPageClient`](../src/components/taskflow/TaskFlowPageClient.tsx) renders views, detail panels, history, dialogs, and the assistant against the controller-owned contract.
 
 This controller layer is the main UI integration seam. It keeps the React tree from needing to know about runtime activation details while still ensuring that the runtime remains the underlying source of truth.
+
+## WebMCP Architecture
+
+The WebMCP path is now split into explicit layers instead of one all-in-one bridge file.
+
+- [`TaskFlowToolGateway`](../src/lib/taskflow-tool-gateway.ts)
+  owns the shared read/write seam for assistant tools and WebMCP tools
+- [`taskflow-webmcp-service.ts`](../src/lib/taskflow-webmcp-service.ts)
+  owns startup, retry, registration ownership, and the browser debug API
+- [`webmcp-host-adapter.ts`](../src/lib/webmcp-host-adapter.ts)
+  isolates `navigator.modelContext`, `registerTool(..., { signal })`, and compatibility cleanup
+- [`taskflow-webmcp-catalog.ts`](../src/lib/taskflow-webmcp-catalog.ts)
+  defines the fixed host-facing tool catalog and nothing else
+
+[`useTaskFlowWebMcp`](../src/hooks/useTaskFlowWebMcp.ts) is intentionally thin. It bootstraps the service on mount and retries startup after later user activation or focus/visibility regain.
+
+The bridge keeps the internal architecture unchanged:
+
+- ChatUI assistant remains app-local and server-orchestrated
+- WebMCP remains browser-local and host-facing
+- both consume the same controller and therefore the same Manifesto snapshot
+
+Current WebMCP surface:
+
+- `get_taskflow_context`
+- `create_task`
+- `update_task`
+- `move_task`
+- `delete_task`
+- `restore_task`
+- `select_task`
+- `search_lineage`
+- `task_brief_list`
+- `inspect_hovered_target`
+- `activate_hovered_target`
+
+`delete_task` is intentionally different from the in-app assistant path: the first call returns a structured confirmation requirement, and only a second call with `confirmed: true` performs the mutation.
+
+The important ownership rule is that WebMCP registrations are long-lived and self-owned by the host adapter. Runtime state changes do not trigger tool re-registration. Hosts fetch fresh runtime state through `get_taskflow_context`.
 
 ## MEL, Codegen, and Build Path
 
@@ -136,6 +189,10 @@ Actual task execution happens on the client:
 
 This is intentional. The showcase is demonstrating that LLM orchestration does not need to own the app state. The model can stay on the server while the product runtime remains local, typed, and grounded in the same Manifesto snapshot the UI is reading.
 
+This split is also what makes the WebMCP path clean: the server path is optional for browser-hosted agents because the browser can expose runtime-backed tools directly from the page.
+
+For the Chrome-facing showcase framing and verification flow, see [CHROME-WEBMCP.md](./CHROME-WEBMCP.md).
+
 Special cases:
 
 - `delete_task` requires explicit client confirmation before the commit is applied
@@ -180,6 +237,7 @@ Persistence rules:
 - The workspace is local-only.
 - The server never becomes the canonical task runtime.
 - Assistant tools operate against the current client runtime contract only.
+- WebMCP only activates when the browser exposes `navigator.modelContext`.
 - World restore, branch switching, and similar lineage control flows are not exposed to the assistant.
 - `pnpm build` currently emits a non-blocking `baseline-browser-mapping` outdated-data warning.
 
@@ -192,5 +250,6 @@ For Manifesto, the point of this architecture is not just that TaskFlow works. T
 - Lineage as continuity and explainability
 - React as a snapshot renderer
 - LLMs as tool users over the same runtime contract
+- WebMCP as a browser-native host integration layer over the same runtime contract
 
 That is the primary architectural story this showcase is intended to tell.

@@ -39,6 +39,7 @@ import { useIsDesktop, useIsMobile } from '@/hooks/useMediaQuery';
 import { useTaskFlowSemanticHoverTarget } from '@/hooks/useTaskFlowSemanticHoverTarget';
 import { useTaskFlow } from '@/hooks/useTaskFlow';
 import { useTaskFlowAssistant } from '@/hooks/useTaskFlowAssistant';
+import { useTaskFlowWebMcp } from '@/hooks/useTaskFlowWebMcp';
 import { filterTasksByDate } from '@/lib/date-filter';
 import { cn } from '@/lib/utils';
 import type { DateFilter, ViewMode } from '@/types/taskflow';
@@ -296,6 +297,7 @@ export function TaskFlowPageClient({
   assistantConfigured,
   assistantDisabledMessage,
 }: TaskFlowPageClientProps) {
+  useTaskFlowWebMcp();
   const { state, ready, actions } = useTaskFlow();
   const assistant = useTaskFlowAssistant({
     configured: assistantConfigured,
