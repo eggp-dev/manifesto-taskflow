@@ -21,6 +21,13 @@ Assistant-facing contract types live in [`src/types/taskflow-assistant.ts`](../s
 - `TaskFlowHoveredTarget`
 - `TaskFlowAssistantUIMessage`
 
+WebMCP-facing contract types live in [`src/types/taskflow-webmcp.ts`](../src/types/taskflow-webmcp.ts), including:
+
+- `TaskFlowWebMcpContext`
+- `TaskFlowWebMcpNotification`
+- `TaskFlowWebMcpDeleteInput`
+- `TaskFlowWebMcpToolResult`
+
 ## Runtime-Backed View State
 
 [`useTaskFlow`](../src/hooks/useTaskFlow.ts) returns:
@@ -155,6 +162,60 @@ The assistant tool surface is:
 - selected task
 - hovered semantic target
 
+## WebMCP Contract
+
+[`useTaskFlowWebMcp`](../src/hooks/useTaskFlowWebMcp.ts) boots a browser-side WebMCP bridge over the same controller contract.
+
+Client responsibility:
+
+- feature-detect `navigator.modelContext`
+- retry bridge startup after later user activation if `modelContext` was unavailable on first mount
+- register imperative WebMCP tools for the current tab through `registerTool(..., { signal })`
+- execute WebMCP tool calls against the local runtime
+
+Internal ownership is split explicitly:
+
+- [`TaskFlowToolGateway`](../src/lib/taskflow-tool-gateway.ts) is the shared runtime-facing tool seam
+- [`taskflow-webmcp-service.ts`](../src/lib/taskflow-webmcp-service.ts) owns lifecycle, registration ownership, and debug state
+- [`webmcp-host-adapter.ts`](../src/lib/webmcp-host-adapter.ts) owns `navigator.modelContext`
+
+WebMCP tool surface:
+
+- `get_taskflow_context`
+- `create_task`
+- `update_task`
+- `move_task`
+- `delete_task`
+- `restore_task`
+- `select_task`
+- `search_lineage`
+- `task_brief_list`
+- `inspect_hovered_target`
+- `activate_hovered_target`
+
+`TaskFlowWebMcpContext` includes:
+
+- `contextVersion`
+- the full `TaskFlowAgentContext` payload
+- non-lineaged UI state under `uiState`
+
+`TaskFlowWebMcpNotification` is the compact invalidation payload. It contains:
+
+- `contextVersion`
+- selected task id
+- hovered target
+- counts
+- branch and visible world ids
+- UI session flags
+
+WebMCP-specific behavior:
+
+- `delete_task` uses a two-step confirmation handshake with `confirmed?: boolean`
+- `get_taskflow_context` is the authoritative host-facing read seam
+- tool registrations are long-lived and self-owned by the bridge; they are not re-registered on every runtime state change
+- WebMCP activation never moves state ownership off the client runtime
+- `window.__taskflowWebMcp` is a dev inspection aid owned by the service, not part of the product contract
+
 ## Component Expectations
 
 [`TaskFlowPageClient`](../src/components/taskflow/TaskFlowPageClient.tsx) composes the application around this contract.
@@ -181,5 +242,6 @@ History components:
 - There is no server-owned canonical runtime.
 - There is no shared persistence or collaborative state.
 - Assistant operations are grounded in the local client runtime only.
+- WebMCP operations are grounded in the same local client runtime only.
 - Hover context is ephemeral and local.
 - The assistant cannot restore worlds, switch branches, or directly activate lineage entries.

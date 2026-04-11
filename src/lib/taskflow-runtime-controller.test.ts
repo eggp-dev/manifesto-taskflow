@@ -263,6 +263,68 @@ describe('taskflow runtime controller', () => {
     }
   });
 
+  it('builds WebMCP context and requires explicit delete confirmation', async () => {
+    const { createTaskFlowRuntimeController } = await import('@/lib/taskflow-runtime-controller');
+    const controller = createTaskFlowRuntimeController({
+      storage: createMemoryStorage(),
+      clockFactory: () => createClockStamp(new Date('2026-04-10T09:00:00.000Z')),
+    });
+
+    await controller.start();
+
+    const taskId = controller.getSnapshot().state?.activeTasks[0]?.id;
+
+    if (!taskId) {
+      throw new Error('Expected a seeded task to exist.');
+    }
+
+    controller.setHistoryOpen(true);
+    controller.setDatePickerOpen(true);
+
+    const webMcpContext = controller.buildWebMcpContext();
+    const notification = controller.buildWebMcpNotification();
+
+    expect(webMcpContext.contextVersion).toBeGreaterThan(0);
+    expect(webMcpContext.uiState.historyOpen).toBe(true);
+    expect(webMcpContext.uiState.datePickerOpen).toBe(true);
+    expect(notification.uiState.historyOpen).toBe(true);
+    expect(notification.uiState.datePickerOpen).toBe(true);
+
+    const contextResult = await controller.executeWebMcpTool('get_taskflow_context', {});
+    expect(contextResult.state).toBe('success');
+    if (contextResult.state === 'success') {
+      expect(contextResult.context?.selectedTaskId).toBeNull();
+      expect(contextResult.context?.counts.active).toBeGreaterThan(0);
+    }
+
+    const pendingDelete = await controller.executeWebMcpTool('delete_task', { taskId });
+    expect(pendingDelete).toEqual({
+      state: 'requires_confirmation',
+      summary: expect.stringContaining('Call delete_task again with confirmed=true'),
+      confirmation: {
+        toolName: 'delete_task',
+        input: {
+          taskId,
+          confirmed: true,
+        },
+      },
+    });
+    expect(controller.getSnapshot().state?.deletedTasks.some((task) => task.id === taskId)).toBe(
+      false,
+    );
+
+    const confirmedDelete = await controller.executeWebMcpTool('delete_task', {
+      taskId,
+      confirmed: true,
+    });
+    expect(confirmedDelete.state).toBe('success');
+    expect(controller.getSnapshot().state?.deletedTasks.some((task) => task.id === taskId)).toBe(
+      true,
+    );
+
+    controller.dispose();
+  });
+
   it('returns the same controller snapshot reference until state changes', async () => {
     const { createTaskFlowRuntimeController } = await import('@/lib/taskflow-runtime-controller');
     const controller = createTaskFlowRuntimeController({
