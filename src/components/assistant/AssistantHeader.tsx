@@ -58,7 +58,7 @@ export function AssistantHeader({
               className="h-9 w-9 rounded-xl border border-white/8 bg-white/[0.03] text-white/64 hover:bg-white/[0.08] hover:text-white"
               asChild
             >
-              <a href="https://github.com/manifesto-ai/taskflow" target="_blank" rel="noopener noreferrer">
+              <a href="https://github.com/eggp-dev/manifesto-taskflow" target="_blank" rel="noopener noreferrer">
                 <Github className="h-4 w-4" />
               </a>
             </Button>
